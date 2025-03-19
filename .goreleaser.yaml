@@ -20,8 +20,6 @@ release:
 universal_binaries:
   - replace: true
 
-signs:
-  - artifacts: checksum
 
 brews:
   -
