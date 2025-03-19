@@ -13,12 +13,15 @@ release:
   prerelease: auto
 
 universal_binaries:
-  - replace: true
+  - name: govm
+    replace: true
 
 brews:
-  -
-    name: govm
+  - name: govm
     homepage: https://github.com/emmadal/govm
+    tap:
+      owner: emmadal
+      name: govm
     commit_author:
       name: emmadal
       email: emmanueldalougou@gmail.com
