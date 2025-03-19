@@ -27,5 +27,4 @@ go.work.sum
 
 # Added by goreleaser init:
 dist/
-vendor/github.com
-vendor/golang.org
+vendor/
