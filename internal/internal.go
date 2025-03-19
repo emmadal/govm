@@ -3,6 +3,7 @@ package internal
 import (
 	"strings"
 
+	"github.com/emmadal/govm/cmd"
 	"github.com/spf13/cobra"
 )
 
@@ -15,14 +16,10 @@ var rootCmd = &cobra.Command{
 		"v1.0.0",
 		"https://github.com/emmadal/govm",
 	}, "\n"),
-	Example: strings.Join([]string{
-		"$ govm install 1.21.3",
-		"$ govm use 1.21.3",
-	}, "\n"),
 }
 
 func Internal() int {
-	rootCmd.AddCommand()
+	rootCmd.AddCommand(cmd.InstallCmd)
 	err := rootCmd.Execute()
 	if err != nil {
 		return 1
