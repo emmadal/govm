@@ -122,44 +122,48 @@ func CachedGoVersion(version string) (string, error) {
 }
 
 // DownloadGoVersion downloads a specific Go version.
-func DownloadGoVersion(version string) (error, string) {
+func DownloadGoVersion(version string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 	defer cancel()
 
 	// Get download URL for the system
 	goURL := GetDownloadUrl(version)
 	if goURL == nil {
-		return fmt.Errorf("Unable to get download URL for the system"), ""
+		return "", fmt.Errorf("Unable to get download URL for the system")
 	}
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goURL.Url, nil)
 	if err != nil {
-		return fmt.Errorf("Failed to create HTTP request: %s\n", err.Error()), ""
+		return "", fmt.Errorf("Failed to create HTTP request: %s\n", err.Error())
 	}
 
 	// Send HTTP request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Download failed: %s\n", err.Error()), ""
+		return "", fmt.Errorf("Failed to send HTTP request: %s\n", err.Error())
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("No version go%s found. Please check the version number", version)
 	}
 
 	// Create cache directory
 	cachePath, err := CreateCacheDir()
 	if err != nil {
-		return err, ""
+		return "", err
 	}
 
 	// Create file
 	file := filepath.Join(cachePath, fmt.Sprintf("go%s.%s.%s", version, goURL.Arch, goURL.Ext))
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("Failed to create file %s: %s\n", file, err.Error()), ""
+		return "", fmt.Errorf("Failed to create file %s: %s\n", file, err.Error())
 	}
 
 	defer f.Close()
-	defer resp.Body.Close()
 
 	// Copy the file to the cache directory
 	if resp.ContentLength > 0 {
@@ -167,10 +171,10 @@ func DownloadGoVersion(version string) (error, string) {
 		ansiColor := fmt.Sprintf("%s===>%s", Green_ANSI, Reset_ANSI)
 		bar := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("%s Downloading go%s", ansiColor, version))
 		if _, err := io.Copy(io.MultiWriter(bar, f), resp.Body); err != nil {
-			return fmt.Errorf("Unable to copy %s: %s\n", file, err.Error()), ""
+			return "", fmt.Errorf("Unable to copy %s: %s\n", file, err.Error())
 		}
 	}
-	return nil, file
+	return file, nil
 }
 
 // UnzipDependency unzips a dependency.
@@ -233,7 +237,7 @@ func UseGoVersion(version string) error {
 		return fmt.Errorf("Failed to update shell profile: %w", err)
 	}
 
-	fmt.Printf("✅ Switched to go%s. Run 'source ~/%s' or restart your terminal to apply permanently.\n", version, shellConfig)
+	fmt.Printf("✅ Switched to go%s. Run 'source ~/%s' and restart your terminal to apply permanently.\n", version, shellConfig)
 	return nil
 }
 
