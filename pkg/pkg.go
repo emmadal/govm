@@ -23,6 +23,7 @@ const (
 	Green_ANSI     = "\033[32m"
 	Reset_ANSI     = "\033[0m"
 	Blue_ANSI      = "\033[34m"
+	Red_ANSI       = "\033[31m"
 	REINSTALL      = "Reinstalling"
 	INSTALL        = "Installing"
 	GO_PATH        = "go"
