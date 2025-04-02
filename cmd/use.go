@@ -16,7 +16,7 @@ var UseCmd = &cobra.Command{
 	Long:  "Use a specific Go version",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 || len(args) == 0 {
-			return fmt.Errorf("Expect one argument\n")
+			return fmt.Errorf("expect one argument")
 		}
 		return nil
 	},
@@ -32,7 +32,7 @@ var UseCmd = &cobra.Command{
 			}
 			return nil
 		}
-		return fmt.Errorf("%s-%s OS is not supported\n", runtime.GOOS, runtime.GOARCH)
+		return fmt.Errorf("%s-%s OS is not supported", runtime.GOOS, runtime.GOARCH)
 	},
 }
 

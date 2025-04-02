@@ -15,7 +15,7 @@ var ListCmd = &cobra.Command{
 	Example: strings.Join([]string{"$ govm list"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
-			return fmt.Errorf("Expect no arguments\n")
+			return fmt.Errorf("expect no arguments")
 		}
 		return nil
 	},

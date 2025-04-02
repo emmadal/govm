@@ -41,7 +41,7 @@ type Tarball struct {
 func GetHomeDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("Unable to get user home directory")
+		return "", fmt.Errorf("unable to get user home directory")
 	}
 	return homeDir, nil
 }
@@ -71,7 +71,7 @@ func CreateConfigDir() error {
 	configPath := filepath.Join(homeDir, config, goVersions, GO_PATH)
 
 	if err := os.MkdirAll(configPath, 0755); err != nil {
-		return fmt.Errorf("Unable to create config directory")
+		return fmt.Errorf("unable to create config directory")
 	}
 	return nil
 }
@@ -85,7 +85,7 @@ func CreateCacheDir() (string, error) {
 	cachePath := filepath.Join(homeDir, config, goCache)
 
 	if err := os.MkdirAll(cachePath, 0755); err != nil {
-		return "", fmt.Errorf("Unable to create cache directory")
+		return "", fmt.Errorf("unable to create cache directory")
 	}
 	return cachePath, nil
 }
@@ -120,7 +120,7 @@ func CachedGoVersion(version string) (string, error) {
 	if _, err := os.Stat(cachedFile); err == nil {
 		return cachedFile, nil
 	}
-	return "", fmt.Errorf("Unable to find cached file for version %s", version)
+	return "", fmt.Errorf("unable to find cached file for version %s", version)
 }
 
 // DownloadGoVersion downloads a specific Go version.
@@ -131,25 +131,30 @@ func DownloadGoVersion(version string) (string, error) {
 	// Get download URL for the system
 	goURL := GetDownloadUrl(version)
 	if goURL == nil {
-		return "", fmt.Errorf("Unable to get download URL for the system")
+		return "", fmt.Errorf("unable to get download URL for the system")
 	}
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goURL.Url, nil)
 	if err != nil {
-		return "", fmt.Errorf("Failed to create HTTP request: %s\n", err.Error())
+		return "", fmt.Errorf("failed to create HTTP request: %s", err.Error())
 	}
 
 	// Send HTTP request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("Failed to send HTTP request: %s\n", err.Error())
+		return "", fmt.Errorf("failed to send HTTP request: %s", err.Error())
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			fmt.Printf("failed to close HTTP response: %s\n", cerr.Error())
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("No version go%s found. Please check the version number", version)
+		return "", fmt.Errorf("no version go%s found. please check the version number", version)
 	}
 
 	// Create cache directory
@@ -162,10 +167,18 @@ func DownloadGoVersion(version string) (string, error) {
 	file := filepath.Join(cachePath, fmt.Sprintf("go%s.%s.%s", version, goURL.Arch, goURL.Ext))
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return "", fmt.Errorf("Failed to create file %s: %s\n", file, err.Error())
+		return "", fmt.Errorf("failed to create file %s: %s", file, err.Error())
 	}
 
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			if err == nil { // Preserve the first error
+				err = fmt.Errorf("failed to close file %s: %w", file, cerr)
+			} else {
+				fmt.Printf("failed to close file %s: %s\n", file, cerr.Error())
+			}
+		}
+	}()
 
 	// Copy the file to the cache directory
 	if resp.ContentLength > 0 {
@@ -173,7 +186,7 @@ func DownloadGoVersion(version string) (string, error) {
 		ansiColor := fmt.Sprintf("%s===>%s", Green_ANSI, Reset_ANSI)
 		bar := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("%s Downloading go%s", ansiColor, version))
 		if _, err := io.Copy(io.MultiWriter(bar, f), resp.Body); err != nil {
-			return "", fmt.Errorf("Unable to copy %s: %s\n", file, err.Error())
+			return "", fmt.Errorf("failed to copy %s: %s", file, err.Error())
 		}
 	}
 	return file, nil
@@ -191,18 +204,18 @@ func UnzipDependency(text, file, version string) error {
 
 	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
 	if err := os.MkdirAll(versionFolder, 0755); err != nil {
-		return fmt.Errorf("Unable to create version folder %s: %s\n", versionFolder, err.Error())
+		return fmt.Errorf("unable to create version folder %s: %s", versionFolder, err.Error())
 	}
 
 	switch runtime.GOOS {
 	case "linux", "darwin":
 		cmd := exec.Command("sh", "-c", fmt.Sprintf("tar -xzf %s --strip-components=1 -C %s", file, versionFolder))
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to unzip %s: %s\n", file, err.Error())
+			return fmt.Errorf("failed to unzip %s: %s", file, err.Error())
 		}
 		return nil
 	default:
-		return fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
+		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}
 }
 
@@ -228,7 +241,9 @@ func UseGoVersion(version string) error {
 
 	// Set PATH for the current session
 	newPath := fmt.Sprintf("%s%c%s", goPath, os.PathListSeparator, currentPath)
-	os.Setenv("PATH", newPath)
+	if err := os.Setenv("PATH", newPath); err != nil {
+		return err
+	}
 
 	// Persist PATH update in shell profile
 	err = UpdateShellProfile(goPath)
@@ -273,9 +288,9 @@ func GetShellConfig() (string, error) {
 		} else if strings.Contains(shell, "bash") {
 			return ".bashrc", nil
 		}
-		return "", fmt.Errorf("Unsupported shell: %s", shell)
+		return "", fmt.Errorf("unsupported shell: %s", shell)
 	}
-	return "", fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
+	return "", fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 }
 
 // RemoveOldGoPaths removes old Go paths from the shell profile.
@@ -284,7 +299,7 @@ func RemoveOldGoPaths(shellConfig string) error {
 	if runtime.GOOS != "windows" {
 		cmd := exec.Command("sh", "-c", fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig))
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("Failed to remove old Go paths from %s: %w", shellConfig, err)
+			return fmt.Errorf("failed to remove old Go paths from %s: %s", shellConfig, err.Error())
 		}
 	}
 	return nil
@@ -304,7 +319,11 @@ func ListGoVersions() error {
 
 	// Buffer writer
 	bufWriter := bufio.NewWriter(os.Stdout)
-	defer bufWriter.Flush()
+	defer func() {
+		if err := bufWriter.Flush(); err != nil {
+			fmt.Printf("failed to flush buffer: %s", err.Error())
+		}
+	}()
 
 	if len(files) == 0 {
 		var sb strings.Builder
