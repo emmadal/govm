@@ -10,11 +10,27 @@ BOLD="\033[1m"
 
 echo "${BLUE}${BOLD}Installing govm - Go Version Manager${RESET}"
 
-# Check if Go is installed
-if ! command -v go &> /dev/null; then
-    echo "${RED}Error: Go is required to build govm. Please install Go first.${RESET}"
-    exit 1
-fi
+# Detect OS and architecture
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+
+# Map architecture names
+case "${ARCH}" in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64|arm64)
+        ARCH="arm64"
+        ;;
+    i386|i686)
+        ARCH="386"
+        ;;
+    *)
+        echo "${RED}Unsupported architecture: ${ARCH}${RESET}"
+        echo "Please submit an issue at: https://github.com/emmadal/govm/issues"
+        exit 1
+        ;;
+esac
 
 # Define installation directories
 GOVM_DIR="${HOME}/.govm"
@@ -60,25 +76,46 @@ detect_shell_profile() {
 
 SHELL_PROFILE=$(detect_shell_profile)
 
-# Get temporary directory for building
+# Create a temporary directory
 TMP_DIR=$(mktemp -d)
 cd "${TMP_DIR}"
 
-# Clone repository or download source
-if command -v git &> /dev/null; then
-    echo "${BLUE}Cloning govm repository...${RESET}"
-    git clone --depth 1 https://github.com/emmadal/govm.git
-    cd govm
+# Download the pre-compiled binary for the detected platform
+RELEASE_URL="https://github.com/emmadal/govm/releases/latest/download/govm_${OS}_${ARCH}"
+DOWNLOAD_URL="${RELEASE_URL}"
+
+echo "${BLUE}Downloading govm binary for ${OS}_${ARCH}...${RESET}"
+if command -v curl &> /dev/null; then
+    curl -s -L -o govm "${DOWNLOAD_URL}"
+elif command -v wget &> /dev/null; then
+    wget -q -O govm "${DOWNLOAD_URL}"
 else
-    echo "${BLUE}Downloading govm source...${RESET}"
-    TARBALL_URL="https://github.com/emmadal/govm/archive/main.tar.gz"
-    curl -sL "${TARBALL_URL}" | tar -xz
-    cd govm-main
+    echo "${RED}Error: Neither curl nor wget found. Please install one of them and try again.${RESET}"
+    exit 1
 fi
 
-# Build govm
-echo "${BLUE}Building govm...${RESET}"
-go build -ldflags "-s -w" -o govm .
+# Check if download was successful
+if [ ! -s govm ]; then
+    echo "${RED}Failed to download govm binary.${RESET}"
+    echo "${BLUE}Trying to download source code instead...${RESET}"
+    
+    # Try to download source as a fallback
+    if command -v git &> /dev/null; then
+        git clone --depth 1 https://github.com/emmadal/govm.git
+        cd govm
+    else
+        curl -s -L -o master.tar.gz https://github.com/emmadal/govm/archive/main.tar.gz
+        tar -xzf master.tar.gz
+        cd govm-main
+    fi
+    
+    echo "${RED}To build govm from source, you need Go installed on your machine.${RESET}"
+    echo "${BLUE}Please install Go and then run:${RESET}"
+    echo "cd $(pwd) && go build -o govm && sudo mv govm ${GOVM_BIN_DIR}/"
+    exit 1
+fi
+
+chmod +x govm
 
 # Install govm binary
 echo "${BLUE}Installing govm binary...${RESET}"
@@ -105,6 +142,8 @@ cd
 rm -rf "${TMP_DIR}"
 
 echo "${GREEN}${BOLD}✓ govm has been successfully installed!${RESET}"
+echo ""
+echo "Now you can use govm to manage multiple Go versions without having Go pre-installed."
 echo ""
 echo "To start using govm, you may need to restart your terminal or run:"
 echo "${BLUE}    source ${SHELL_PROFILE}${RESET}"
