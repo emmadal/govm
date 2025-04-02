@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Internal() int {
-	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd)
+	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd)
 	err := rootCmd.Execute()
 	if err != nil {
 		return 1

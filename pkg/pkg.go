@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -286,4 +288,95 @@ func RemoveOldGoPaths(shellConfig string) error {
 		}
 	}
 	return nil
+}
+
+// ListGoVersions lists installed Go versions.
+func ListGoVersions() error {
+	cachePath, err := GetCacheDir()
+	if err != nil {
+		return err
+	}
+
+	files, err := os.ReadDir(cachePath)
+	if err != nil {
+		return err
+	}
+
+	// Buffer writer
+	bufWriter := bufio.NewWriter(os.Stdout)
+	defer bufWriter.Flush()
+
+	if len(files) == 0 {
+		var sb strings.Builder
+		sb.WriteString("No Go versions installed.\n")
+		sb.WriteString("Run 'govm install <version>' to install a version.\n")
+		if _, err := bufWriter.WriteString(sb.String()); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Get architecture
+	arch := fmt.Sprintf(".%s-%s", runtime.GOOS, runtime.GOARCH)
+
+	activeGoVersion, err := GetActiveGoVersion()
+	if err != nil {
+		return err
+	}
+
+	// Loop through files
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), GO_PATH) && strings.Contains(file.Name(), arch) {
+			// Get file name
+			fileName := strings.Split(file.Name(), arch)[0]
+
+			// Write file name to buffer
+			var sb strings.Builder
+			sb.WriteString(Red_ANSI)
+			sb.WriteString("→ ")
+			sb.WriteString(fileName)
+			sb.WriteString(" N/A - Downloaded")
+			sb.WriteString(Reset_ANSI)
+			sb.WriteByte('\n')
+
+			if _, err := bufWriter.WriteString(sb.String()); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Write active Go version
+	var sb strings.Builder
+	sb.WriteString(Green_ANSI)
+	sb.WriteString("\nActive Go version: ")
+	sb.WriteString(activeGoVersion)
+
+	sb.WriteString(Reset_ANSI)
+	sb.WriteByte('\n')
+
+	if _, err := bufWriter.WriteString(sb.String()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetActiveGoVersion returns the active Go version.
+func GetActiveGoVersion() (string, error) {
+	// Run `go version` directly instead of parsing $PATH
+	cmd := exec.Command("go", "version")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// Extract version using regex
+	re := regexp.MustCompile(`go\d+\.\d+\.\d+`)
+	match := re.FindString(string(output))
+	if match == "" {
+		return "", fmt.Errorf("could not determine active Go version")
+	}
+
+	return match, nil
 }
