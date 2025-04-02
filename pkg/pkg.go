@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -199,12 +201,9 @@ func UnzipDependency(text, file, version string) error {
 			return fmt.Errorf("failed to unzip %s: %s\n", file, err.Error())
 		}
 		return nil
-
-	case "windows":
-		fmt.Printf("We can't unzip on Windows yet\n")
-		return nil
+	default:
+		return fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
 	}
-	return nil
 }
 
 // UseGoVersion changes the active Go version.
@@ -234,7 +233,7 @@ func UseGoVersion(version string) error {
 	// Persist PATH update in shell profile
 	err = UpdateShellProfile(goPath)
 	if err != nil {
-		return fmt.Errorf("Failed to update shell profile: %w", err)
+		return err
 	}
 
 	fmt.Printf("✅ Switched to go%s. Run 'source ~/%s' and restart your terminal to apply permanently.\n", version, shellConfig)
@@ -243,6 +242,7 @@ func UseGoVersion(version string) error {
 
 // UpdateShellProfile updates the shell profile.
 func UpdateShellProfile(goPath string) error {
+	// Get shell config
 	shellConfig, err := GetShellConfig()
 	if err != nil {
 		return err
@@ -254,31 +254,129 @@ func UpdateShellProfile(goPath string) error {
 	}
 
 	// Append the new Go path
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'export PATH=\"%s:$PATH\"' >> ~/%s", goPath, shellConfig))
+	if runtime.GOOS != "windows" {
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'export PATH=\"%s:$PATH\"' >> ~/%s", goPath, shellConfig))
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Failed to update %s: %w", shellConfig, err)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
 	}
-
 	return nil
 }
 
 // GetShellConfig returns the shell config file.
 func GetShellConfig() (string, error) {
-	shell := os.Getenv("SHELL")
-	if strings.Contains(shell, "zsh") {
-		return ".zshrc", nil
-	} else if strings.Contains(shell, "bash") {
-		return ".bashrc", nil
+	if runtime.GOOS != "windows" {
+		shell := os.Getenv("SHELL")
+		if strings.Contains(shell, "zsh") {
+			return ".zshrc", nil
+		} else if strings.Contains(shell, "bash") {
+			return ".bashrc", nil
+		}
+		return "", fmt.Errorf("Unsupported shell: %s", shell)
 	}
-	return "", fmt.Errorf("Unsupported shell: %s", shell)
+	return "", fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
 }
 
 // RemoveOldGoPaths removes old Go paths from the shell profile.
 func RemoveOldGoPaths(shellConfig string) error {
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Failed to remove old Go paths from %s: %w", shellConfig, err)
+	// Remove old Go paths from the shell profile
+	if runtime.GOOS != "windows" {
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig))
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("Failed to remove old Go paths from %s: %w", shellConfig, err)
+		}
 	}
 	return nil
+}
+
+// ListGoVersions lists installed Go versions.
+func ListGoVersions() error {
+	cachePath, err := GetCacheDir()
+	if err != nil {
+		return err
+	}
+
+	files, err := os.ReadDir(cachePath)
+	if err != nil {
+		return err
+	}
+
+	// Buffer writer
+	bufWriter := bufio.NewWriter(os.Stdout)
+	defer bufWriter.Flush()
+
+	if len(files) == 0 {
+		var sb strings.Builder
+		sb.WriteString("No Go versions installed.\n")
+		sb.WriteString("Run 'govm install <version>' to install a version.\n")
+		if _, err := bufWriter.WriteString(sb.String()); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Get architecture
+	arch := fmt.Sprintf(".%s-%s", runtime.GOOS, runtime.GOARCH)
+
+	activeGoVersion, err := GetActiveGoVersion()
+	if err != nil {
+		return err
+	}
+
+	// Loop through files
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), GO_PATH) && strings.Contains(file.Name(), arch) {
+			// Get file name
+			fileName := strings.Split(file.Name(), arch)[0]
+
+			// Write file name to buffer
+			var sb strings.Builder
+			sb.WriteString(Red_ANSI)
+			sb.WriteString("→ ")
+			sb.WriteString(fileName)
+			sb.WriteString(" N/A - Downloaded")
+			sb.WriteString(Reset_ANSI)
+			sb.WriteByte('\n')
+
+			if _, err := bufWriter.WriteString(sb.String()); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Write active Go version
+	var sb strings.Builder
+	sb.WriteString(Green_ANSI)
+	sb.WriteString("\nActive Go version: ")
+	sb.WriteString(activeGoVersion)
+
+	sb.WriteString(Reset_ANSI)
+	sb.WriteByte('\n')
+
+	if _, err := bufWriter.WriteString(sb.String()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetActiveGoVersion returns the active Go version.
+func GetActiveGoVersion() (string, error) {
+	// Run `go version` directly instead of parsing $PATH
+	cmd := exec.Command("go", "version")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// Extract version using regex
+	re := regexp.MustCompile(`go\d+\.\d+\.\d+`)
+	match := re.FindString(string(output))
+	if match == "" {
+		return "", fmt.Errorf("could not determine active Go version")
+	}
+
+	return match, nil
 }

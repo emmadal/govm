@@ -1,13 +1,20 @@
-govm is a tool for managing multiple Go versions on macOS, Linux
+**govm** is a management tool for Go versions.
 
-## Example
+It allows you to install and switch between different Go versions.
+
+## Installation
 
 ```sh
-$ govm install 1.24.1
-  Switched to go1.24.1. Run 'source ~/.zshrc' or Run 'source ~/.bashrc' and restart your terminal to apply permanently.
+curl -sL https://raw.githubusercontent.com/emmadal/govm/main/install.sh | sh
+```
 
-$ govm use 1.24.1
-  Switched to go1.24.1. Run 'source ~/.zshrc' or Run 'source ~/.bashrc' and restart your terminal to apply permanently.
+## Usage
+
+```sh
+govm install <version> # Install a specific Go version
+govm use <version>     # Switch to a specific Go version
+govm list             # List installed Go versions
+govm rm <version>     # Uninstall a specific Go version
 ```
 
 ## Contributing

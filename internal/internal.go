@@ -10,8 +10,8 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "govm",
-	Short: "version manager for Go.",
-	Long:  "Allows you to easily switch between different Go versions.",
+	Short: "version manager for Go",
+	Long:  "Allows you to install and switch between different Go versions",
 	Version: strings.Join([]string{
 		"v1.0.0",
 		"https://github.com/emmadal/govm",
@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Internal() int {
-	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd)
+	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd)
 	err := rootCmd.Execute()
 	if err != nil {
 		return 1

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -23,21 +24,22 @@ var InstallCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args[0]) < 6 {
-			return fmt.Errorf("Invalid version format. Please enter a valid version\n")
+		if runtime.GOOS != "windows" {
+			if len(args[0]) < 6 {
+				return fmt.Errorf("Invalid version format. Please enter a valid version\n")
+			}
+			// Check if version is >= MIN_VERSION
+			if !compareVersions(args[0], MIN_VERSION) {
+				return fmt.Errorf("Minimum supported version is %s. Please install a newer version.\n", MIN_VERSION)
+			}
+			// Check if the version is valid
+			err := installGoVersion(args[0])
+			if err != nil {
+				return err
+			}
+			return nil
 		}
-
-		// Check if version is >= MIN_VERSION
-		if !compareVersions(args[0], MIN_VERSION) {
-			return fmt.Errorf("Minimum supported version is %s. Please install a newer version.\n", MIN_VERSION)
-		}
-
-		// Check if the version is valid
-		err := installGoVersion(args[0])
-		if err != nil {
-			return err
-		}
-		return nil
+		return fmt.Errorf("%s-%s OS is not supported\n", runtime.GOOS, runtime.GOARCH)
 	},
 }
 
