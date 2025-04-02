@@ -26,6 +26,10 @@ var UseCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			err = pkg.UseGoVersion(args[0])
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		return fmt.Errorf("%s-%s OS is not supported\n", runtime.GOOS, runtime.GOARCH)
@@ -42,5 +46,5 @@ func verifyFileExists(version string) error {
 	if _, err := os.Stat(file); err != nil {
 		return err
 	}
-	return pkg.UseGoVersion(version)
+	return nil
 }
