@@ -1,8 +1,11 @@
 # govm - Go Version Manager
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/release/emmadal/govm.svg)](https://github.com/emmadal/govm/releases)
+[![GitHub issues](https://img.shields.io/github/issues/emmadal/govm.svg)](https://github.com/emmadal/govm/issues)
+[![GitHub stars](https://img.shields.io/github/stars/emmadal/govm.svg)](https://github.com/emmadal/govm/stargazers)
 
-`govm` is a version manager for Go, allowing you to easily install and switch between multiple versions of Go.
+**govm** is a version manager for Go, allowing you to easily install and switch between multiple versions of Go.
 
 ## Installation
 
@@ -67,9 +70,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 If you encounter any issues or have questions, please file an issue on the [GitHub repository](https://github.com/emmadal/govm/issues).
-
-## Acknowledgments
-
-- Inspired by [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager)
-- Thanks to all contributors who have helped make `govm` better!
 
