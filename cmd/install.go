@@ -37,6 +37,7 @@ var InstallCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 		return fmt.Errorf("%s-%s OS is not supported\n", runtime.GOOS, runtime.GOARCH)
 	},
