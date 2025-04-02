@@ -199,12 +199,9 @@ func UnzipDependency(text, file, version string) error {
 			return fmt.Errorf("failed to unzip %s: %s\n", file, err.Error())
 		}
 		return nil
-
-	case "windows":
-		fmt.Printf("We can't unzip on Windows yet\n")
-		return nil
+	default:
+		return fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
 	}
-	return nil
 }
 
 // UseGoVersion changes the active Go version.
@@ -234,7 +231,7 @@ func UseGoVersion(version string) error {
 	// Persist PATH update in shell profile
 	err = UpdateShellProfile(goPath)
 	if err != nil {
-		return fmt.Errorf("Failed to update shell profile: %w", err)
+		return err
 	}
 
 	fmt.Printf("✅ Switched to go%s. Run 'source ~/%s' and restart your terminal to apply permanently.\n", version, shellConfig)
@@ -243,6 +240,7 @@ func UseGoVersion(version string) error {
 
 // UpdateShellProfile updates the shell profile.
 func UpdateShellProfile(goPath string) error {
+	// Get shell config
 	shellConfig, err := GetShellConfig()
 	if err != nil {
 		return err
@@ -254,31 +252,38 @@ func UpdateShellProfile(goPath string) error {
 	}
 
 	// Append the new Go path
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'export PATH=\"%s:$PATH\"' >> ~/%s", goPath, shellConfig))
+	if runtime.GOOS != "windows" {
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'export PATH=\"%s:$PATH\"' >> ~/%s", goPath, shellConfig))
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Failed to update %s: %w", shellConfig, err)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
 	}
-
 	return nil
 }
 
 // GetShellConfig returns the shell config file.
 func GetShellConfig() (string, error) {
-	shell := os.Getenv("SHELL")
-	if strings.Contains(shell, "zsh") {
-		return ".zshrc", nil
-	} else if strings.Contains(shell, "bash") {
-		return ".bashrc", nil
+	if runtime.GOOS != "windows" {
+		shell := os.Getenv("SHELL")
+		if strings.Contains(shell, "zsh") {
+			return ".zshrc", nil
+		} else if strings.Contains(shell, "bash") {
+			return ".bashrc", nil
+		}
+		return "", fmt.Errorf("Unsupported shell: %s", shell)
 	}
-	return "", fmt.Errorf("Unsupported shell: %s", shell)
+	return "", fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
 }
 
 // RemoveOldGoPaths removes old Go paths from the shell profile.
 func RemoveOldGoPaths(shellConfig string) error {
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Failed to remove old Go paths from %s: %w", shellConfig, err)
+	// Remove old Go paths from the shell profile
+	if runtime.GOOS != "windows" {
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig))
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("Failed to remove old Go paths from %s: %w", shellConfig, err)
+		}
 	}
 	return nil
 }

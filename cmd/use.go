@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
@@ -20,8 +21,14 @@ var UseCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		err := verifyFileExists(args[0])
-		return err
+		if runtime.GOOS != "windows" {
+			err := verifyFileExists(args[0])
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		return fmt.Errorf("%s-%s OS is not supported\n", runtime.GOOS, runtime.GOARCH)
 	},
 }
 
