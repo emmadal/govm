@@ -78,7 +78,7 @@ fi
 
 # Build govm
 echo "${BLUE}Building govm...${RESET}"
-go build -o govm .
+go build -ldflags "-s -w" -o govm .
 
 # Install govm binary
 echo "${BLUE}Installing govm binary...${RESET}"
