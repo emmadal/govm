@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"runtime"
+	"os"
 	"strconv"
 	"strings"
 
@@ -24,22 +24,15 @@ var InstallCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if runtime.GOOS != "windows" {
-			if len(args[0]) < 6 {
-				return fmt.Errorf("invalid version format. Please enter a valid version")
-			}
-			// Check if version is >= MIN_VERSION
-			if !compareVersions(args[0], MIN_VERSION) {
-				return fmt.Errorf("minimum supported version is %s. Please install a newer version", MIN_VERSION)
-			}
-			// Check if the version is valid
-			err := installGoVersion(args[0])
-			if err != nil {
-				return err
-			}
-			return nil
+		if len(args[0]) < 6 {
+			return fmt.Errorf("invalid version format. Please enter a valid version")
 		}
-		return fmt.Errorf("%s-%s OS is not supported", runtime.GOOS, runtime.GOARCH)
+		// Check if version is >= MIN_VERSION
+		if !compareVersions(args[0], MIN_VERSION) {
+			return fmt.Errorf("minimum supported version is %s. Please install a up-to-date version", MIN_VERSION)
+		}
+		// Install the Go version
+		return installGoVersion(args[0])
 	},
 }
 
@@ -51,11 +44,14 @@ func installGoVersion(version string) error {
 	// Check if the version is already downloaded
 	cachedFile, err := pkg.CachedGoVersion(version)
 	if err == nil {
-		fmt.Printf("go%s is already downloaded. Skipping download\n", version)
+		fmt.Fprintf(os.Stdout, "%s%s%s is already downloaded. Skipping download\n", pkg.Blue_ANSI, version, pkg.Reset_ANSI)
 		if err := pkg.UnzipDependency(pkg.REINSTALL, cachedFile, version); err != nil {
 			return err
 		}
-		return pkg.UseGoVersion(version)
+		if err := pkg.UseGoVersion(version); err != nil {
+			return err
+		}
+		return nil
 	}
 	// Download the Go version
 	file, err := pkg.DownloadGoVersion(version)

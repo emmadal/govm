@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"runtime"
+	"strings"
 
 	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
@@ -11,9 +11,9 @@ import (
 
 // UseCmd represents the use command
 var UseCmd = &cobra.Command{
-	Use:   "use",
-	Short: "Use Go version",
-	Long:  "Use a specific Go version",
+	Use:     "use",
+	Short:   "Use a specific Go version",
+	Example: strings.Join([]string{"$ govm use 1.21.0"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 || len(args) == 0 {
 			return fmt.Errorf("expect one argument")
@@ -21,18 +21,15 @@ var UseCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if runtime.GOOS != "windows" {
-			err := verifyFileExists(args[0])
-			if err != nil {
-				return err
-			}
-			err = pkg.UseGoVersion(args[0])
-			if err != nil {
-				return err
-			}
-			return nil
+		err := verifyFileExists(args[0])
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("%s-%s OS is not supported", runtime.GOOS, runtime.GOARCH)
+		err = pkg.UseGoVersion(args[0])
+		if err != nil {
+			return err
+		}
+		return nil
 	},
 }
 

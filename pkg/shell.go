@@ -11,9 +11,6 @@ import (
 
 // UpdateShellProfile updates the shell profile.
 func UpdateShellProfile(goPath string) error {
-	if runtime.GOOS == "windows" {
-		return fmt.Errorf("Windows is not supported for updating shell profile")
-	}
 	// Get shell config
 	shellConfig, err := GetShellConfig()
 	if err != nil {
@@ -40,10 +37,6 @@ func UpdateShellProfile(goPath string) error {
 
 // GetShellConfig returns the shell config file.
 func GetShellConfig() (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", fmt.Errorf("Windows is not supported for getting shell config")
-	}
-
 	// Get shell config
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -69,47 +62,69 @@ func GetShellConfig() (string, error) {
 
 // RemoveOldGoPaths removes old Go paths from the shell profile.
 func RemoveOldGoPaths(shellConfig string) error {
-	if runtime.GOOS == "windows" {
-		return fmt.Errorf("Windows is not supported for removing old Go paths")
-	}
-
 	// Check if shell config is valid
 	if shellConfig == "" {
 		return fmt.Errorf("invalid shell configuration file name")
 	}
 
 	// Portable `sed` command for macOS and Linux
-	cmdStr := fmt.Sprintf(`[ "$(uname)" = "Darwin" ] && sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s || sed -i '/export PATH=.*.govm\\/version/d' ~/%s`, shellConfig, shellConfig)
+	cmdStr := fmt.Sprintf("sed -i '' '/export PATH=.*.govm\\/version/d' ~/%s", shellConfig)
 	cmd := exec.Command("sh", "-c", cmdStr)
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to remove old Go paths from %s: %s", shellConfig, err.Error())
+		return fmt.Errorf("failed to remove old Go paths from %s", shellConfig)
 	}
 	return nil
 }
 
 // GetActiveGoVersion returns the active Go version.
 func GetActiveGoVersion() (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", fmt.Errorf("Windows is not supported for getting active Go version")
-	}
-
 	// Check if go is installed
 	if _, err := exec.LookPath("go"); err != nil {
-		return "", fmt.Errorf("%s%s%s", Red_ANSI, "go is not installed. Please install go first with 'govm install'", Reset_ANSI)
+		return "", fmt.Errorf("go is not installed. Please install go first with 'govm install'")
 	}
 
 	// Get active Go version
 	cmd := exec.Command("go", "version")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("%s%s%s", Red_ANSI, "could not determine active Go version", Reset_ANSI)
+		return "", fmt.Errorf("could not determine active Go version")
 	}
 	// Extract version using regex
 	re := regexp.MustCompile(`go\d+(\.\d+)+`)
 	match := re.FindString(string(output))
 	if match == "" {
-		return "", fmt.Errorf("%s%s%s", Red_ANSI, "could not determine active Go version", Reset_ANSI)
+		return "", fmt.Errorf("could not determine active Go version")
 	}
 	return match, nil
+}
+
+// UseGoVersion changes the active Go version.
+func UseGoVersion(version string) error {
+	goVersionDir, err := GetConfigDir()
+	if err != nil {
+		return err
+	}
+
+	goPath := fmt.Sprintf("%s/%s%s/bin", goVersionDir, GO_PATH, version)
+	shellConfig, err := GetShellConfig()
+	if err != nil {
+		return err
+	}
+
+	// Set PATH for the current session
+	newPath := fmt.Sprintf("%s%c%s", goPath, os.PathListSeparator, os.Getenv("PATH"))
+	if err := os.Setenv("PATH", newPath); err != nil {
+		return err
+	}
+
+	// Persist PATH update in shell profile
+	err = UpdateShellProfile(goPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "✅ Switched to go%s. Run 'source ~/%s' and restart your terminal to apply permanently.\n", version, shellConfig)
+
+	return nil
 }

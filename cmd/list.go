@@ -20,6 +20,7 @@ var ListCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// List installed Go versions
 		err := pkg.ListGoVersions()
 		if err != nil {
 			return err
