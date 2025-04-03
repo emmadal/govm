@@ -23,16 +23,23 @@ var RemoveCmd = &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Ask for confirmation
-		confirmed, err := pkg.ConfirmRemoval()
-		if !confirmed || err != nil {
-			return err
-		}
-
-		// Remove govm
-		if err := internal.Uninstall(); err != nil {
-			return err
-		}
-		return nil
+		return removeGovm()
 	},
+}
+
+// removeGovm removes govm from the system
+func removeGovm() error {
+	// Ask for confirmation
+	confirmed, err := pkg.ConfirmRemoval()
+	if !confirmed || err != nil {
+		return err
+	}
+
+	// Use the Go implementation to uninstall govm
+	err = internal.Uninstall()
+	if err != nil {
+		return fmt.Errorf("failed to uninstall govm: %v", err)
+	}
+
+	return nil
 }

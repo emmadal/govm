@@ -195,7 +195,7 @@ func Uninstall() error {
 	colorPrintln(Green+Bold, "✓ govm has been successfully removed from your system!")
 	colorPrintln(Blue, "To ensure all changes take effect, please restart your terminal or run:")
 	fmt.Fprintf(os.Stdout, "    source %s\n\n", shellProfile)
-	fmt.Fprint(os.Stdout, "Thank you for using govm!")
+	fmt.Fprintln(os.Stdout, "Thank you for using govm!")
 
 	return nil
 }
