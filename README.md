@@ -44,13 +44,13 @@ With **govm**, you can quickly install any Go version, switch between them effor
 To install `govm`, run the following command:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/emmadal/govm/main/install.sh | bash
+curl -o- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
 ```
 
 or
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/emmadal/govm/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
 ```
 
 ---
