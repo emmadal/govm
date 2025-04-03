@@ -243,25 +243,26 @@ jobs:
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
+
       - name: Generate changelog
         id: changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
+          
           if [ -z "$PREV_TAG" ]; then
             # If no previous tag, get all commits
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            git log --pretty=format:"- %s" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            git log --pretty=format:"- %s" > CHANGELOG.md
           else
             # Get commits between previous tag and current tag
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            echo "Changes since $PREV_TAG:" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            git log --pretty=format:"- %s" $PREV_TAG..HEAD >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "Changes since $PREV_TAG:" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log --pretty=format:"- %s" $PREV_TAG..HEAD >> CHANGELOG.md
           fi
+          
+          # Set the changelog to an output variable using the correct syntax
+          echo "CHANGELOG<<CHANGELOGEOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "CHANGELOGEOF" >> $GITHUB_OUTPUT
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -273,7 +274,7 @@ jobs:
           mkdir -p release-assets
           cp artifacts/*/* release-assets/ || echo "No artifacts found"
           find release-assets -type f | sort
-      
+          
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
