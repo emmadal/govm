@@ -134,12 +134,15 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}
+          name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}_${{ github.sha }}
           path: |
             ${{ steps.build.outputs.output }}
             ${{ steps.build.outputs.checksum }}
           if-no-files-found: error
-  
+          include-hidden-files: false
+          compression-level: 6
+          overwrite: false
+          
   create-install-scripts:
     needs: build
     name: Create Installation Scripts
