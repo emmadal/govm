@@ -43,7 +43,7 @@ jobs:
           check-latest: true
           
       - name: Go Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -88,7 +88,7 @@ jobs:
           check-latest: true
       
       - name: Go Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -124,7 +124,7 @@ jobs:
           echo "checksum=${OUTPUT}.sha256" >> $GITHUB_OUTPUT
       
       - name: Upload binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}
           path: |
@@ -214,7 +214,7 @@ jobs:
           chmod +x build/install.sh
 
       - name: Upload install scripts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: install-scripts
           path: |
@@ -256,7 +256,7 @@ jobs:
           fi
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
       
