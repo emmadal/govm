@@ -123,6 +123,14 @@ jobs:
           echo "output=$OUTPUT" >> $GITHUB_OUTPUT
           echo "checksum=${OUTPUT}.sha256" >> $GITHUB_OUTPUT
       
+      # Debugging the existence of files before upload
+      - name: Verify files before upload
+        run: |
+          echo "Checking if binary exists: ${{ steps.build.outputs.output }}"
+          ls -l ${{ steps.build.outputs.output }}
+          echo "Checking if checksum exists: ${{ steps.build.outputs.checksum }}"
+          ls -l ${{ steps.build.outputs.checksum }}
+      
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
