@@ -83,4 +83,4 @@ jobs:
             build/govm_darwin_amd64
             build/govm_darwin_arm64
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
