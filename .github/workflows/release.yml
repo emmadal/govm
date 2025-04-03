@@ -9,15 +9,9 @@ jobs:
     name: Build and Release
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for creating releases
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      contents: write
+      id-token: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for changelog generation
-        
       # Using GitHub's REST API with the GITHUB_TOKEN to check if the user is a repository admin
       - name: Verify Owner/Admin Access
         run: |
@@ -35,230 +29,58 @@ jobs:
           else
             echo "User ${{ github.actor }} is the repository owner. Proceeding with build."
           fi
-          
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
-          check-latest: true
+          go-version: '1.21' # You can adjust this to your preferred Go version
 
-      - name: Generate build matrix
-        id: matrix
+      - name: Build binaries
         run: |
-          echo "matrix=$(jq -c . << EOF
-          {
-            "platforms": [
-              {"os": "linux", "arch": "amd64"},
-              {"os": "linux", "arch": "arm64"},
-              {"os": "darwin", "arch": "amd64"},
-              {"os": "darwin", "arch": "arm64"}
-            ]
-          }
-          EOF)" >> $GITHUB_OUTPUT
-
-  compile:
-    needs: build
-    name: Build ${{ matrix.platform.os }}/${{ matrix.platform.arch }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{ fromJson(needs.build.outputs.matrix) }}
-      fail-fast: false
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-          check-latest: true
-
-      
-      - name: Build binary
-        id: build
-        env:
-          GOOS: ${{ matrix.platform.os }}
-          GOARCH: ${{ matrix.platform.arch }}
-        run: |
-          # Create output directory
+          # Create a directory for the binaries
           mkdir -p build
-          
-          # Set output filename with extension for Windows
-          if [ "$GOOS" = "windows" ]; then
-            OUTPUT="build/govm_${GOOS}_${GOARCH}.exe"
-          else
-            OUTPUT="build/govm_${GOOS}_${GOARCH}"
-          fi
-          
-          # Build with version information
-          VERSION=${GITHUB_REF#refs/tags/}
-          go build -ldflags="-s -w -X main.Version=${VERSION}" -o "$OUTPUT" .
-          
-          # Generate checksum
-          sha256sum "$OUTPUT" > "${OUTPUT}.sha256"
-          
-          echo "output=$OUTPUT" >> $GITHUB_OUTPUT
-          echo "checksum=${OUTPUT}.sha256" >> $GITHUB_OUTPUT
-      
-      # Debugging the existence of files before upload
-      - name: Verify files before upload
-        run: |
-          echo "Checking if binary exists: ${{ steps.build.outputs.output }}"
-          ls -l ${{ steps.build.outputs.output }}
-          echo "Checking if checksum exists: ${{ steps.build.outputs.checksum }}"
-          ls -l ${{ steps.build.outputs.checksum }}
-      
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}_${{ github.run_number }}_${{ github.run_attempt }}
-          path: |
-            ${{ steps.build.outputs.output }}
-            ${{ steps.build.outputs.checksum }}
-          if-no-files-found: error
-          include-hidden-files: false
-          compression-level: 6
-          overwrite: true
 
-  create-install-scripts:
-    needs: build
-    name: Create Installation Scripts
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Prepare install scripts
-        run: |
-          mkdir -p build
+          # List of OSes and architectures to build for
+          PLATFORMS=("linux/amd64" "linux/arm64" "linux/386" "darwin/amd64" "darwin/arm64")
           
-          # Unix install script
-          cat > build/install.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          # Detect OS and architecture
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m)
-          
-          # Map architecture names
-          case "$ARCH" in
-            x86_64) ARCH="amd64" ;;
-            aarch64|arm64) ARCH="arm64" ;;
-            i386|i686) ARCH="386" ;;
-            *)
-              echo "Unsupported architecture: $ARCH"
+          # Build for each platform
+          for PLATFORM in "${PLATFORMS[@]}"; do
+            OS="${PLATFORM%/*}"
+            ARCH="${PLATFORM#*/}"
+            
+            echo "Building for $OS/$ARCH..."
+            
+            # Set environment variables for cross-compilation
+            GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "build/govm_${OS}_${ARCH}" .
+            
+            if [ $? -ne 0 ]; then
+              echo "Failed to build for $OS/$ARCH"
               exit 1
-              ;;
-          esac
-          
-          # Get latest release version
-          VERSION=$(curl -s https://api.github.com/repos/emmadal/govm/releases/latest | grep -Po '"tag_name": "\K[^"]*')
-          DOWNLOAD_URL="https://github.com/emmadal/govm/releases/download/${VERSION}/govm_${OS}_${ARCH}"
-          
-          # Install directory
-          INSTALL_DIR="$HOME/.govm"
-          mkdir -p "$INSTALL_DIR/bin"
-          
-          echo "Downloading GOVM ${VERSION} for ${OS}/${ARCH}..."
-          curl -L "$DOWNLOAD_URL" -o "$INSTALL_DIR/bin/govm"
-          chmod +x "$INSTALL_DIR/bin/govm"
-          
-          echo "GOVM has been installed to $INSTALL_DIR/bin/govm"
-          echo ""
-          echo "Please add the following to your shell configuration file:"
-          echo 'export PATH="$PATH:$HOME/.govm/bin"'
-          echo 'export GOVM_ROOT="$HOME/.govm"'
-          EOF
-          
-          # Windows PowerShell install script
-          cat > build/install.ps1 << 'EOF'
-          # Detect architecture
-          $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "386" }
-          
-          # Get latest release version
-          $version = (Invoke-RestMethod -Uri "https://api.github.com/repos/emmadal/govm/releases/latest").tag_name
-          $downloadUrl = "https://github.com/emmadal/govm/releases/download/${version}/govm_windows_${arch}.exe"
-          
-          # Install directory
-          $installDir = "$env:USERPROFILE\.govm"
-          $binDir = "$installDir\bin"
-          
-          # Create directories
-          New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-          
-          Write-Host "Downloading GOVM ${version} for windows/${arch}..."
-          Invoke-WebRequest -Uri $downloadUrl -OutFile "$binDir\govm.exe"
-          
-          Write-Host "GOVM has been installed to $binDir\govm.exe"
-          Write-Host ""
-          Write-Host "Please add the following directory to your PATH:"
-          Write-Host "$binDir"
-          Write-Host ""
-          Write-Host "And set the following environment variable:"
-          Write-Host "GOVM_ROOT = $installDir"
-          EOF
-          
-          chmod +x build/install.sh
+            fi
+          done
 
-      - name: Upload install scripts
-        uses: actions/upload-artifact@v4
-        with:
-          name: install-scripts
-          path: |
-            build/install.sh
-            build/install.ps1
-          if-no-files-found: error
-
-  release:
-    needs: [compile, create-install-scripts]
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      
-      - name: Prepare release assets
-        run: |
-          mkdir -p release-assets
-          cp artifacts/*/* release-assets/ || echo "No artifacts found"
-          find release-assets -type f | sort
-          
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Release ${{ steps.get_version.outputs.VERSION }}
-          body: |
-            GOVM - Go Version Manager ${{ steps.get_version.outputs.VERSION }}
-            
-            ## Installation
-            
-            ### macOS/Linux:
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/emmadal/govm/main/install.sh | bash
-            ```
-            
-            ### Windows:
-            ```powershell
-            iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/install.ps1 | iex
-            ```
-  
-            ## SHA256 Checksums
-            Verify your downloads with `sha256sum -c <checksum-file>` or by comparing against the values below.
-          files: release-assets/*
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/govm_linux_amd64
+            build/govm_linux_arm64
+            build/govm_linux_386
+            build/govm_darwin_amd64
+            build/govm_darwin_arm64
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
