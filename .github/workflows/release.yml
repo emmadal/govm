@@ -60,11 +60,8 @@ jobs:
             "platforms": [
               {"os": "linux", "arch": "amd64"},
               {"os": "linux", "arch": "arm64"},
-              {"os": "linux", "arch": "386"},
               {"os": "darwin", "arch": "amd64"},
-              {"os": "darwin", "arch": "arm64"},
-              {"os": "windows", "arch": "amd64"},
-              {"os": "windows", "arch": "386"}
+              {"os": "darwin", "arch": "arm64"}
             ]
           }
           EOF)" >> $GITHUB_OUTPUT
@@ -134,7 +131,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}
+          name: govm_${{ matrix.platform.os }}_${{ matrix.platform.arch }}_${{ github.sha }}
           path: |
             ${{ steps.build.outputs.output }}
             ${{ steps.build.outputs.checksum }}
@@ -251,7 +248,7 @@ jobs:
         id: changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
+
           if [ -z "$PREV_TAG" ]; then
             # If no previous tag, get all commits
             echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
