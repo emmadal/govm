@@ -255,11 +255,10 @@ jobs:
             iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/install.ps1 | iex
             ```
   
-            
             ## SHA256 Checksums
             Verify your downloads with `sha256sum -c <checksum-file>` or by comparing against the values below.
           files: release-assets/*
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
