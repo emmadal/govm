@@ -41,17 +41,7 @@ jobs:
         with:
           go-version: '1.22'
           check-latest: true
-          
-      - name: Go Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      
+
       - name: Generate build matrix
         id: matrix
         run: |
@@ -83,16 +73,7 @@ jobs:
         with:
           go-version: '1.22'
           check-latest: true
-      
-      - name: Go Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ matrix.platform.os }}-${{ matrix.platform.arch }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.platform.os }}-${{ matrix.platform.arch }}-
+
       
       - name: Build binary
         id: build
@@ -255,22 +236,6 @@ jobs:
           cp artifacts/*/* release-assets/ || echo "No artifacts found"
           find release-assets -type f | sort
           
-      - name: Generate changelog
-        id: changelog
-        run: |
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # If this is the first release, list all commits
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            git log --pretty=format:"* %s (%h) - by %an" HEAD >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            # Otherwise, list commits since the previous tag
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            git log --pretty=format:"* %s (%h) - by %an" $PREVIOUS_TAG..HEAD >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          fi
-          
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -289,9 +254,7 @@ jobs:
             ```powershell
             iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/install.ps1 | iex
             ```
-            
-            ## What's New
-            ${{ steps.changelog.outputs.CHANGELOG }}
+  
             
             ## SHA256 Checksums
             Verify your downloads with `sha256sum -c <checksum-file>` or by comparing against the values below.
