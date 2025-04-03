@@ -1,13 +1,13 @@
 package pkg
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -181,46 +181,49 @@ func ListGoVersions() error {
 		return err
 	}
 
-	// Buffer writer
-	bufWriter := bufio.NewWriter(os.Stdout)
-	defer func() {
-		if flushErr := bufWriter.Flush(); flushErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to flush buffer: %s", flushErr.Error())
-		}
-	}()
-
 	if len(files) == 0 {
 		return fmt.Errorf("No Go versions found. Install a version with 'govm install <version>'")
 	}
 
-	// Get architecture
 	arch := fmt.Sprintf(".%s-%s", runtime.GOOS, runtime.GOARCH)
 
+	// Try getting the active Go version, but don't exit if it fails
 	activeGoVersion, err := GetActiveGoVersion()
 	if err != nil {
-		return err
+		fmt.Fprintln(os.Stderr, "Warning: Could not determine active Go version")
+		activeGoVersion = ""
 	}
+
+	// Match Go version format
+	re := regexp.MustCompile(`go(\d+\.\d+\.\d+([a-z]+\d+)?)`)
+	sb := strings.Builder{}
+	found := false
 
 	// Loop through files
 	for _, file := range files {
-		if strings.HasPrefix(file.Name(), GO_PATH) && strings.Contains(file.Name(), arch) {
-			version := strings.Split(file.Name(), arch)[0]
+		name := file.Name()
+		if strings.HasPrefix(name, GO_PATH) && strings.Contains(name, arch) {
+			matches := re.FindStringSubmatch(name)
+			if len(matches) > 1 {
+				version := matches[1]
+				color := Red_ANSI
+				status := "N/A - Downloaded"
 
-			color := Red_ANSI
-			status := "N/A - Downloaded"
-
-			if version == activeGoVersion {
-				color = Green_ANSI
-				status = "(Active)"
-			}
-
-			line := fmt.Sprintf("%s→ %s %s%s\n", color, version, status, Reset_ANSI)
-			if _, err := bufWriter.WriteString(line); err != nil {
-				return err
+				if version == activeGoVersion {
+					color = Green_ANSI
+					status = "(Active)"
+				}
+				sb.WriteString(fmt.Sprintf("%s→ %s %s%s\n", color, version, status, Reset_ANSI))
+				found = true
 			}
 		}
 	}
 
+	// Print the list of Go versions
+	if !found {
+		return fmt.Errorf("No matching Go versions found for architecture %s", arch)
+	}
+	fmt.Fprint(os.Stdout, sb.String())
 	return nil
 }
 
