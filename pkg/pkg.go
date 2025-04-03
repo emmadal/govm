@@ -283,3 +283,39 @@ func RemoveGoVersion(version string) error {
 	fmt.Fprintf(os.Stdout, "%sGo version %s has been removed successfully.%s\n", Green_ANSI, version, Reset_ANSI)
 	return nil
 }
+
+// ConfirmRemoval asks for user confirmation to remove govm
+func ConfirmRemoval() (bool, error) {
+	var sb strings.Builder
+
+	// Build the confirmation message in memory using strings.Builder
+	fmt.Fprintf(&sb, "%s%s%s\n", Red_ANSI, "This will completely remove govm from your system, including:", Reset_ANSI)
+	fmt.Fprintln(&sb, "  - The govm binary")
+	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
+	fmt.Fprintln(&sb, "  - All govm configuration files")
+	fmt.Fprintln(os.Stdout, sb.String())
+
+	// Ask for user confirmation
+	var reply string
+
+	// Add the prompt to the builder
+	fmt.Fprint(os.Stdout, "Are you sure you want to proceed? (y/n): ")
+	_, err := fmt.Scanln(&reply)
+	if err != nil {
+		return false, fmt.Errorf("failed to read input: %v", err)
+	}
+
+	reply = strings.ToLower(strings.TrimSpace(reply))
+
+	// Handle valid responses
+	if reply == "y" {
+		return true, nil
+	} else if reply == "n" {
+		fmt.Fprintln(os.Stdout, "Removal cancelled.")
+		return false, nil
+	} else {
+		// Invalid input, re-prompt
+		fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
+		return false, nil
+	}
+}

@@ -33,7 +33,7 @@ var rootCmd = &cobra.Command{
 
 // init adds the commands before the main function is called
 func init() {
-	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd, cmd.RmCmd, cmd.UpdateCmd)
+	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd, cmd.RmCmd, cmd.UpdateCmd, cmd.RemoveCmd)
 }
 
 // main is the entry point of the application
