@@ -1,34 +1,37 @@
-name: codeql
+name: Code Scanning
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+  schedule:
+    - cron: "0 0 * * 0" # Weekly
+
+permissions:
+  actions: read  # for github/codeql-action/init to get workflow details
+  contents: read  # for actions/checkout to fetch code
+  security-events: write  # for github/codeql-action/analyze to upload SARIF results
 
 jobs:
-  analyze:
-    name: Analyze Code
+  CodeQL-Build:
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [go]
 
     steps:
-      - name: Checkout repository
+      - name: Check out code
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: go
+          queries: security-and-quality
 
-      - name: Build the project
-        run: |
-          go mod tidy
-          go build -v ./...
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
