@@ -257,7 +257,10 @@ func RemoveGoVersion(version string) error {
 	// Ask for confirmation
 	response := ""
 	fmt.Fprintf(os.Stdout, "Are you sure you want to remove Go version %s? (y/n): ", version)
-	fmt.Scanln(&response)
+	_, err = fmt.Scanln(&response)
+	if err != nil {
+		return fmt.Errorf("failed to read input: %v", err)
+	}
 
 	response = strings.ToLower(strings.TrimSpace(response))
 	if response != "y" {

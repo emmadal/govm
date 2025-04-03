@@ -47,6 +47,14 @@ govm list
 govm rm <version>
 ```
 
+### Updating govm
+
+You can update `govm` to the latest version using the following command:
+
+```bash
+govm update
+```
+
 ## Features
 
 - Easy installation and management of multiple Go versions
