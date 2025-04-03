@@ -78,10 +78,14 @@ func CachedGoVersion(version string) (string, error) {
 	fileName := fmt.Sprintf("go%s.%s%s", version, t.GetArch(), t.GetExt())
 	cachedFile := filepath.Join(cachePath, fileName)
 
+	// Check if the cached file exists
 	if _, err := os.Stat(cachedFile); err == nil {
 		return cachedFile, nil
+	} else if os.IsNotExist(err) {
+		return "", fmt.Errorf("cached file for Go version %s not found", version)
+	} else {
+		return "", fmt.Errorf("error checking cached file: %v", err)
 	}
-	return "", fmt.Errorf("unable to find cached file for version %s", version)
 }
 
 // DownloadGoVersion downloads a specific Go version.
@@ -217,5 +221,62 @@ func ListGoVersions() error {
 		}
 	}
 
+	return nil
+}
+
+// RemoveGoVersion removes a specific Go version.
+func RemoveGoVersion(version string) error {
+	// Verify if the Go version is active
+	activeGoVersion, err := GetActiveGoVersion()
+	if err != nil {
+		return err
+	}
+	if version == activeGoVersion {
+		return fmt.Errorf("%s is currently active. Please switch to another version", version)
+	}
+
+	// Check if the version exists before proceeding
+	cachedFile, err := CachedGoVersion(version)
+	if err != nil {
+		return fmt.Errorf("Go version %s is not installed", version)
+	}
+
+	// Verify the installation directory exists
+	versionDir, err := GetConfigDir()
+	if err != nil {
+		return fmt.Errorf("failed to get config directory: %v", err)
+	}
+
+	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
+	if _, err := os.Stat(versionFolder); os.IsNotExist(err) {
+		// Only the cached file exists, not the installation
+		fmt.Fprintf(os.Stdout, "%sWarning: Installation directory for Go %s not found, but cached file exists%s\n",
+			Red_ANSI, version, Reset_ANSI)
+	}
+
+	// Ask for confirmation
+	response := ""
+	fmt.Fprintf(os.Stdout, "Are you sure you want to remove Go version %s? (y/n): ", version)
+	fmt.Scanln(&response)
+
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response != "y" {
+		fmt.Fprintf(os.Stdout, "%sCancelling removal of Go version %s%s\n", Red_ANSI, version, Reset_ANSI)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "Removing Go version %s...\n", version)
+
+	// Remove cached file
+	if err := os.Remove(cachedFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove cached file %s: %v", cachedFile, err)
+	}
+
+	// Remove version folder
+	if err := os.RemoveAll(versionFolder); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove version folder %s: %v", versionFolder, err)
+	}
+
+	fmt.Fprintf(os.Stdout, "%sGo version %s has been removed successfully.%s\n", Green_ANSI, version, Reset_ANSI)
 	return nil
 }

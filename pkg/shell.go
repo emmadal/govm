@@ -91,7 +91,7 @@ func GetActiveGoVersion() (string, error) {
 		return "", fmt.Errorf("could not determine active Go version")
 	}
 	// Extract version using regex
-	re := regexp.MustCompile(`go\d+(\.\d+)+`)
+	re := regexp.MustCompile(`\d+\.\d+\.\d+`)
 	match := re.FindString(string(output))
 	if match == "" {
 		return "", fmt.Errorf("could not determine active Go version")

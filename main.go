@@ -11,12 +11,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func getVersion() string {
+	data, err := os.ReadFile("VERSION")
+	if err != nil {
+		return "dev" // Fallback if VERSION file is missing
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "govm",
 	Short: "Go version manager. Manage multiple Go versions easily",
 	Version: strings.Join([]string{
-		"v1.0.0",
+		getVersion(),
 		"https://github.com/emmadal/govm",
 	}, "\n"),
 	SilenceErrors: true,
@@ -25,15 +33,14 @@ var rootCmd = &cobra.Command{
 
 // init adds the commands before the main function is called
 func init() {
-	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd)
+	rootCmd.AddCommand(cmd.InstallCmd, cmd.UseCmd, cmd.ListCmd, cmd.RmCmd)
 }
 
 // main is the entry point of the application
 func main() {
 	// Block execution on Windows
 	if runtime.GOOS == "windows" {
-		fmt.Fprintln(os.Stderr, "Error: Windows is not supported for govm")
-		fmt.Fprintln(os.Stderr, "We will support Windows in the future")
+		fmt.Fprintln(os.Stderr, "Error: Windows is not supported for govm.\nAlternative: Use WSL (Windows Subsystem for Linux).")
 		os.Exit(1)
 	}
 
