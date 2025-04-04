@@ -195,7 +195,12 @@ func UpdateGovm() error {
 		if err != nil {
 			return fmt.Errorf("failed to create VERSION file")
 		}
-		defer file.Close()
+		defer func() {
+			err := file.Close()
+			if err != nil {
+				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing VERSION file: %v\033[0m\n", err))
+			}
+		}()
 		sb := strings.Builder{}
 		sb.WriteString(latestTag + "\n")
 		sb.WriteString("time: " + time.Now().Format(time.RFC3339))
