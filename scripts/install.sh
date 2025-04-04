@@ -80,6 +80,16 @@ SHELL_PROFILE=$(detect_shell_profile)
 TMP_DIR=$(mktemp -d)
 cd "${TMP_DIR}"
 
+# Get the latest version tag
+echo -e "${BLUE}Retrieving latest version information...${RESET}"
+if command -v curl &> /dev/null; then
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/emmadal/govm/releases/latest | grep -o '"tag_name":"[^"]*' | grep -o '[^"]*$')
+elif command -v wget &> /dev/null; then
+    LATEST_VERSION=$(wget -q -O - https://api.github.com/repos/emmadal/govm/releases/latest | grep -o '"tag_name":"[^"]*' | grep -o '[^"]*$')
+else
+    LATEST_VERSION="unknown"
+fi
+
 # Download the pre-compiled binary for the detected platform
 RELEASE_URL="https://github.com/emmadal/govm/releases/latest/download/govm_${OS}_${ARCH}"
 DOWNLOAD_URL="${RELEASE_URL}"
@@ -136,6 +146,12 @@ if [[ "${GOVM_BIN_DIR}" == "${HOME}/.local/bin" ]]; then
         echo "export PATH=\"\${HOME}/.local/bin:\${PATH}\"" >> "${SHELL_PROFILE}"
     fi
 fi
+
+# Create VERSION file with the latest version tag
+echo "${LATEST_VERSION}" > "${HOME}/.local/bin/VERSION"
+
+# Make VERSION file read-only
+chmod 444 "${HOME}/.local/bin/VERSION"
 
 # Clean up temporary directory
 cd
