@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,18 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
+
+	"github.com/emmadal/govm/pkg"
 )
 
-// CheckSudo checks if the user has sudo access
-func CheckSudo() bool {
-	cmd := exec.Command("sudo", "-n", "true")
-	err := cmd.Run()
-	return err == nil
-}
-
-// GetInstallDir returns the appropriate installation directory based on sudo access
-func GetInstallDir() string {
-	if CheckSudo() {
+// getInstallDir returns the appropriate installation directory based on sudo access
+func getInstallDir() string {
+	if checkSudo() {
 		return "/usr/local/bin"
 	}
 
@@ -36,8 +33,8 @@ func GetInstallDir() string {
 	return localBin
 }
 
-// DetectPlatform returns the OS and architecture for download
-func DetectPlatform() (string, string, error) {
+// detectPlatform returns the OS and architecture for download
+func detectPlatform() (string, string, error) {
 	goos := runtime.GOOS
 
 	// Map architecture
@@ -53,8 +50,8 @@ func DetectPlatform() (string, string, error) {
 	return goos, arch, nil
 }
 
-// DownloadLatestRelease downloads the latest govm binary for the current platform
-func DownloadLatestRelease() (string, error) {
+// downloadLatestRelease downloads the latest govm binary for the current platform
+func downloadLatestRelease() (string, error) {
 	// Create a temporary directory
 	tmpDir, err := os.MkdirTemp("", "govm-update-*")
 	if err != nil {
@@ -62,7 +59,7 @@ func DownloadLatestRelease() (string, error) {
 	}
 
 	// Detect platform
-	goos, arch, err := DetectPlatform()
+	goos, arch, err := detectPlatform()
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", err
@@ -106,14 +103,31 @@ func DownloadLatestRelease() (string, error) {
 
 // UpdateGovm updates govm to the latest version
 func UpdateGovm() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	tag := make(chan string, 1)
+	tagErr := make(chan error, 1)
+
 	fmt.Fprint(os.Stdout, "\033[34m\033[1mUpdating govm - Go Version Manager\033[0m\n")
 
 	// Get install directory
-	installDir := GetInstallDir()
-	hasSudo := CheckSudo() && installDir == "/usr/local/bin"
+	installDir := getInstallDir()
+	hasSudo := checkSudo() && installDir == "/usr/local/bin"
+
+	// Get the latest version tag
+	go func() {
+		latestTag, err := pkg.GetLatestTag()
+		if err != nil {
+			tagErr <- err
+			close(tagErr)
+			return
+		}
+		tag <- latestTag
+		close(tag)
+	}()
 
 	// Download latest release
-	binaryPath, err := DownloadLatestRelease()
+	binaryPath, err := downloadLatestRelease()
 	if err != nil {
 		return err
 	}
@@ -157,8 +171,25 @@ func UpdateGovm() error {
 		}
 	}
 
-	fmt.Fprint(os.Stdout, "\033[32m\033[1m✓ govm has been successfully updated!\033[0m\n\n")
-	fmt.Fprint(os.Stdout, "\033[34mFor more information, visit: https://github.com/emmadal/govm\033[0m\n")
+	// Wait for the latest tag
+	select {
+	case err := <-tagErr:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("timeout waiting for latest tag")
+	case latestTag := <-tag:
+		file, err := os.Create(filepath.Join(installDir, "VERSION"))
+		if err != nil {
+			return fmt.Errorf("failed to create VERSION file")
+		}
+		defer file.Close()
+		_, err = file.WriteString(latestTag)
+		if err != nil {
+			return fmt.Errorf("failed to write VERSION file")
+		}
+		fmt.Fprint(os.Stdout, fmt.Sprintf("\033[32m\033[1m✓ govm has been successfully updated!\033[0m\n\n"))
+		fmt.Fprint(os.Stdout, fmt.Sprintf("\033[34mFor more information, visit: https://github.com/emmadal/govm\033[0m\n"))
+	}
 
 	return nil
 }

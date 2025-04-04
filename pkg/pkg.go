@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -321,4 +322,29 @@ func ConfirmRemoval() (bool, error) {
 		fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
 		return false, nil
 	}
+}
+
+// GetLatestTag returns the latest version tag from GitHub
+func GetLatestTag() (string, error) {
+	var latestTag struct {
+		TagName string `json:"tag_name"`
+	}
+	// Get the latest version tag
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/emmadal/govm/releases/latest", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request")
+	}
+
+	client := &http.Client{Timeout: 50 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get latest tag")
+	}
+	defer resp.Body.Close()
+
+	if err := json.NewDecoder(resp.Body).Decode(&latestTag); err != nil {
+		return "", fmt.Errorf("failed to decode latest tag")
+	}
+
+	return strings.TrimSpace(latestTag.TagName), nil
 }
