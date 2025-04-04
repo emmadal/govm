@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/emmadal/govm/pkg"
@@ -138,16 +139,12 @@ func UpdateGovm() error {
 	installPath := filepath.Join(installDir, "govm")
 
 	if hasSudo {
-		cmd := exec.Command("sudo", "cp", binaryPath, installPath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("sudo cp %s %s", binaryPath, installPath))
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to install govm binary: %v", err)
 		}
 
-		chmodCmd := exec.Command("sudo", "chmod", "+x", installPath)
-		chmodCmd.Stdout = os.Stdout
-		chmodCmd.Stderr = os.Stderr
+		chmodCmd := exec.Command("sh", "-c", fmt.Sprintf("sudo chmod +x %s", installPath))
 		if err := chmodCmd.Run(); err != nil {
 			return fmt.Errorf("failed to set execute permissions: %v", err)
 		}
@@ -178,12 +175,15 @@ func UpdateGovm() error {
 	case <-ctx.Done():
 		return fmt.Errorf("timeout waiting for latest tag")
 	case latestTag := <-tag:
-		file, err := os.Create(filepath.Join(installDir, "VERSION"))
+		file, err := os.OpenFile(filepath.Join(installDir, "VERSION"), os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return fmt.Errorf("failed to create VERSION file")
 		}
 		defer file.Close()
-		_, err = file.WriteString(latestTag)
+		sb := strings.Builder{}
+		sb.WriteString(latestTag + "\n")
+		sb.WriteString("time: " + time.Now().Format(time.RFC3339))
+		_, err = file.WriteString(sb.String())
 		if err != nil {
 			return fmt.Errorf("failed to write VERSION file")
 		}

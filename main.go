@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -12,8 +13,14 @@ import (
 )
 
 func getVersion() string {
-	data, err := os.ReadFile("VERSION")
+	homedir, err := os.UserHomeDir()
 	if err != nil {
+		return "dev" // Fallback if VERSION file is missing
+	}
+	versionFile := filepath.Join(homedir, ".local", "bin", "VERSION")
+	data, err := os.ReadFile(versionFile)
+	if err != nil {
+		fmt.Println("Error reading VERSION file:", err)
 		return "dev" // Fallback if VERSION file is missing
 	}
 	return strings.TrimSpace(string(data))
