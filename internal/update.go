@@ -93,7 +93,13 @@ func downloadLatestRelease() (string, error) {
 	}
 
 	_, err = io.Copy(outFile, resp.Body)
-	outFile.Close()
+	defer func() {
+		err := outFile.Close()
+		if err != nil {
+			_ = os.RemoveAll(tmpDir)
+			fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
+		}
+	}()
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("failed to write output file: %v", err)
@@ -154,13 +160,23 @@ func UpdateGovm() error {
 		if err != nil {
 			return fmt.Errorf("failed to open binary file: %v", err)
 		}
-		defer inFile.Close()
+		defer func() {
+			err := inFile.Close()
+			if err != nil {
+				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing input file: %v\033[0m\n", err))
+			}
+		}()
 
 		outFile, err := os.OpenFile(installPath, os.O_CREATE|os.O_WRONLY, 0755)
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %v", err)
 		}
-		defer outFile.Close()
+		defer func() {
+			err := outFile.Close()
+			if err != nil {
+				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
+			}
+		}()
 
 		_, err = io.Copy(outFile, inFile)
 		if err != nil {
