@@ -8,9 +8,6 @@
 [![GitHub issues](https://img.shields.io/github/issues/emmadal/govm.svg)](https://github.com/emmadal/govm/issues)
 [![GitHub stars](https://img.shields.io/github/stars/emmadal/govm.svg)](https://github.com/emmadal/govm/stargazers)
 [![GitHub contributors](https://img.shields.io/github/contributors/emmadal/govm.svg)](https://github.com/emmadal/govm/contributors)
-[![GitHub last commit](https://img.shields.io/github/last-commit/emmadal/govm.svg)](https://github.com/emmadal/govm/commits/main)
-[![committers.top badge](https://user-badge.committers.top/ivory_coast/emmadal.svg)](https://user-badge.committers.top/ivory_coast/emmadal)
-
 
 
 **govm** is a simple yet powerful Go version manager that allows you to seamlessly install, switch, and manage multiple Go versions on your system. Whether you're working on different projects requiring different Go versions or just need an easy way to manage your Go environment, **govm** has got you covered.
@@ -120,15 +117,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License—see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
 If you encounter any issues or have questions, please file an issue on the [GitHub repository](https://github.com/emmadal/govm/issues).
-
-## Credits
-
-- [Go](https://golang.org/)
-- [cobra](https://github.com/spf13/cobra)
-- [progressbar](https://github.com/schollz/progressbar)
 

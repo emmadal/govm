@@ -150,9 +150,6 @@ fi
 # Create VERSION file with the latest version tag
 echo "${LATEST_VERSION}" > "${HOME}/.local/bin/VERSION"
 
-# Make VERSION file read-only
-chmod 444 "${HOME}/.local/bin/VERSION"
-
 # Clean up temporary directory
 cd
 rm -rf "${TMP_DIR}"
@@ -167,6 +164,7 @@ echo ""
 echo "Usage examples:"
 echo -e "${BLUE}    govm install 1.21.6  # Install Go 1.21.6${RESET}"
 echo -e "${BLUE}    govm use 1.21.6      # Switch to Go 1.21.6${RESET}"
+echo -e "${BLUE}    govm latest          # Install the latest version of Go${RESET}"
 echo -e "${BLUE}    govm list            # List installed Go versions${RESET}"
 echo -e "${BLUE}    govm rm 1.21.6       # Remove Go 1.21.6${RESET}"
 echo -e "${BLUE}    govm update          # Update govm to the latest version${RESET}"
