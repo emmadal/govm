@@ -23,13 +23,15 @@ func getInstallDir() string {
 
 	homedir, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "\033[31mError getting home directory: %v\033[0m\n", err)
+		_, _ = fmt.Fprintf(os.Stdout, "\033[31mError getting home directory: %v\033[0m\n", err)
 		os.Exit(1)
 	}
 
 	localBin := filepath.Join(homedir, ".local", "bin")
-	// Ensure local bin directory exists
-	os.MkdirAll(localBin, 0755)
+	// Ensure a local bin directory exists
+	if err := os.MkdirAll(localBin, 0755); err != nil {
+		_, _ = fmt.Fprintf(os.Stdout, "\033[31mError creating local bin directory: %v\033[0m\n", err)
+	}
 
 	return localBin
 }
@@ -59,7 +61,7 @@ func downloadLatestRelease() (string, error) {
 		return "", fmt.Errorf("failed to create temporary directory: %v", err)
 	}
 
-	// Detect platform
+	// Detect a platform
 	goos, arch, err := detectPlatform()
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
@@ -69,7 +71,7 @@ func downloadLatestRelease() (string, error) {
 	// Construct download URL
 	downloadURL := fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s", goos, arch)
 
-	fmt.Fprintf(os.Stdout, "\033[34mDownloading latest govm binary for %s_%s...\033[0m\n", goos, arch)
+	_, _ = fmt.Fprintf(os.Stdout, "\033[34mDownloading latest govm binary for %s_%s...\033[0m\n", goos, arch)
 
 	// Download the binary
 	resp, err := http.Get(downloadURL)
@@ -77,7 +79,12 @@ func downloadLatestRelease() (string, error) {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("failed to download govm binary: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			_ = os.RemoveAll(tmpDir)
+			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing response body: %v\033[0m\n", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		_ = os.RemoveAll(tmpDir)
@@ -97,7 +104,7 @@ func downloadLatestRelease() (string, error) {
 		err := outFile.Close()
 		if err != nil {
 			_ = os.RemoveAll(tmpDir)
-			fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
+			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
 		}
 	}()
 	if err != nil {
@@ -115,7 +122,7 @@ func UpdateGovm() error {
 	tag := make(chan string, 1)
 	tagErr := make(chan error, 1)
 
-	fmt.Fprint(os.Stdout, "\033[34m\033[1mUpdating govm - Go Version Manager\033[0m\n")
+	_, _ = fmt.Fprint(os.Stdout, "\033[34m\033[1mUpdating govm - Go Version Manager\033[0m\n")
 
 	// Get install directory
 	installDir := getInstallDir()
@@ -133,15 +140,19 @@ func UpdateGovm() error {
 		close(tag)
 	}()
 
-	// Download latest release
+	// Download the latest release
 	binaryPath, err := downloadLatestRelease()
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(filepath.Dir(binaryPath))
+	defer func() {
+		if err := os.RemoveAll(binaryPath); err != nil {
+			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError removing temporary file: %v\033[0m\n", err))
+		}
+	}()
 
 	// Install the binary
-	fmt.Fprint(os.Stdout, "\033[34mInstalling govm binary...\033[0m\n")
+	_, _ = fmt.Fprint(os.Stdout, "\033[34mInstalling govm binary...\033[0m\n")
 	installPath := filepath.Join(installDir, "govm")
 
 	if hasSudo {
@@ -155,7 +166,7 @@ func UpdateGovm() error {
 			return fmt.Errorf("failed to set execute permissions: %v", err)
 		}
 	} else {
-		// Copy the binary to the install directory
+		// Copy the binary to the installation directory
 		inFile, err := os.Open(binaryPath)
 		if err != nil {
 			return fmt.Errorf("failed to open binary file: %v", err)
@@ -163,7 +174,7 @@ func UpdateGovm() error {
 		defer func() {
 			err := inFile.Close()
 			if err != nil {
-				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing input file: %v\033[0m\n", err))
+				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing input file: %v\033[0m\n", err))
 			}
 		}()
 
@@ -174,7 +185,7 @@ func UpdateGovm() error {
 		defer func() {
 			err := outFile.Close()
 			if err != nil {
-				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
+				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
 			}
 		}()
 
@@ -198,7 +209,7 @@ func UpdateGovm() error {
 		defer func() {
 			err := file.Close()
 			if err != nil {
-				fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing VERSION file: %v\033[0m\n", err))
+				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing VERSION file: %v\033[0m\n", err))
 			}
 		}()
 		sb := strings.Builder{}
@@ -208,8 +219,10 @@ func UpdateGovm() error {
 		if err != nil {
 			return fmt.Errorf("failed to write VERSION file")
 		}
-		fmt.Fprint(os.Stdout, fmt.Sprintf("\033[32m\033[1m✓ govm has been successfully updated!\033[0m\n\n"))
-		fmt.Fprint(os.Stdout, fmt.Sprintf("\033[34mFor more information, visit: https://github.com/emmadal/govm\033[0m\n"))
+		_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[32m\033[1m✓ govm has been successfully updated!\033[0m\n\n"))
+		_, _ = fmt.Fprint(
+			os.Stdout, fmt.Sprintf("\033[34mFor more information, visit: https://github.com/emmadal/govm\033[0m\n"),
+		)
 	}
 
 	return nil

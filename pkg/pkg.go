@@ -117,7 +117,7 @@ func DownloadGoVersion(version string) (string, error) {
 		return "", fmt.Errorf("no version go%s found. please check the version number", version)
 	}
 
-	// Create cache directory
+	// Create a cache directory
 	cachePath, err := CreateCacheDir()
 	if err != nil {
 		return "", err
@@ -254,8 +254,10 @@ func RemoveGoVersion(version string) error {
 	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
 	if _, err := os.Stat(versionFolder); os.IsNotExist(err) {
 		// Only the cached file exists, not the installation
-		fmt.Fprintf(os.Stdout, "%sWarning: Installation directory for Go %s not found, but cached file exists%s\n",
-			Red_ANSI, version, Reset_ANSI)
+		fmt.Fprintf(
+			os.Stdout, "%sWarning: Installation directory for Go %s not found, but cached file exists%s\n",
+			Red_ANSI, version, Reset_ANSI,
+		)
 	}
 
 	// Ask for confirmation

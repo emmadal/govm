@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RemoveCmd represents the remove command
-var RemoveCmd = &cobra.Command{
+// removeCmd represents the remove command
+var removeCmd = &cobra.Command{
 	Use:     "uninstall",
 	Short:   "uninstall govm from the system",
 	Example: strings.Join([]string{"$ govm uninstall"}, "\n"),

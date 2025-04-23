@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -11,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// UpdateCmd represents the update command
-var UpdateCmd = &cobra.Command{
+// updateCmd represents the update command
+var updateCmd = &cobra.Command{
 	Use:     "update",
 	Short:   "update govm to the latest version",
 	Example: strings.Join([]string{"$ govm update"}, "\n"),

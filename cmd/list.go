@@ -9,7 +9,7 @@ import (
 )
 
 // listCmd represents the list command
-var ListCmd = &cobra.Command{
+var listCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List installed Go versions",
 	Example: strings.Join([]string{"$ govm list"}, "\n"),

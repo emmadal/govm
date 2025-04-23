@@ -81,16 +81,16 @@ func RemoveOldGoPaths(shellConfig string) error {
 func GetActiveGoVersion() (string, error) {
 	// Check if go is installed
 	if _, err := exec.LookPath("go"); err != nil {
-		return "", fmt.Errorf("go is not installed. Please install go first with 'govm install'")
+		return "", fmt.Errorf("go is not installed. Please install go first with 'govm install <version>'")
 	}
 
-	// Get active Go version
+	// Get an active Go version
 	cmd := exec.Command("go", "version")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("could not determine active Go version")
 	}
-	// Extract version using regex
+	// Extract a version using regex
 	re := regexp.MustCompile(`\d+\.\d+\.\d+`)
 	match := re.FindString(string(output))
 	if match == "" {
@@ -124,7 +124,10 @@ func UseGoVersion(version string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "✅ Switched to go%s. Run 'source ~/%s' and restart your terminal to apply permanently.\n", version, shellConfig)
+	_, _ = fmt.Fprintf(
+		os.Stdout, "✅ Switched to go%s. Run 'source ~/%s' or restart your terminal to apply permanently.\n", version,
+		shellConfig,
+	)
 
 	return nil
 }

@@ -10,10 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const MIN_VERSION = "1.21.0"
+const MinVersion = "1.21.0"
 
-// InstallCmd represents the install command
-var InstallCmd = &cobra.Command{
+// installCmd represents the install command
+var installCmd = &cobra.Command{
 	Use:     "install",
 	Short:   "Install a specific Go version",
 	Example: strings.Join([]string{"$ govm install 1.21.0"}, "\n"),
@@ -27,9 +27,9 @@ var InstallCmd = &cobra.Command{
 		if len(args[0]) < 6 {
 			return fmt.Errorf("invalid version format. Please enter a valid version")
 		}
-		// Check if version is >= MIN_VERSION
-		if !compareVersions(args[0], MIN_VERSION) {
-			return fmt.Errorf("minimum supported version is %s. Please install a up-to-date version", MIN_VERSION)
+		// Check if a version is >= MinVersion
+		if !compareVersions(args[0], MinVersion) {
+			return fmt.Errorf("minimum supported version is %s. Please install a up-to-date version", MinVersion)
 		}
 		// Install the Go version
 		return installGoVersion(args[0])
@@ -44,7 +44,9 @@ func installGoVersion(version string) error {
 	// Check if the version is already downloaded
 	cachedFile, err := pkg.CachedGoVersion(version)
 	if err == nil {
-		fmt.Fprintf(os.Stdout, "%s%s%s is already downloaded. Skipping download\n", pkg.Blue_ANSI, version, pkg.Reset_ANSI)
+		_, _ = fmt.Fprintf(
+			os.Stdout, "%s%s%s is already downloaded. Skipping download\n", pkg.Blue_ANSI, version, pkg.Reset_ANSI,
+		)
 		if err := pkg.UnzipDependency(pkg.REINSTALL, cachedFile, version); err != nil {
 			return err
 		}
@@ -79,7 +81,7 @@ func compareVersions(a, b string) bool {
 		bNum, _ := strconv.Atoi(bParts[i])
 
 		if aNum > bNum {
-			return true // a is greater
+			return true // it is greater
 		} else if aNum < bNum {
 			return false // a is smaller
 		}

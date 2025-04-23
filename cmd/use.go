@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// UseCmd represents the use command
-var UseCmd = &cobra.Command{
+// useCmd represents the use command
+var useCmd = &cobra.Command{
 	Use:     "use",
 	Short:   "Use a specific Go version",
 	Example: strings.Join([]string{"$ govm use 1.21.0"}, "\n"),

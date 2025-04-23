@@ -19,7 +19,7 @@ const (
 )
 
 func colorPrintln(color, text string) {
-	fmt.Fprint(os.Stdout, color+text+Reset+"\n")
+	_, _ = fmt.Fprint(os.Stdout, color+text+Reset+"\n")
 }
 
 // checkSudo checks if the user has sudo access
@@ -105,19 +105,19 @@ func cleanShellProfile(profilePath string) error {
 
 		if keepLine {
 			if _, err := writer.WriteString(line + "\n"); err != nil {
-				tempFile.Close()
+				_ = tempFile.Close()
 				return err
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return err
 	}
 
-	writer.Flush()
-	tempFile.Close()
+	_ = writer.Flush()
+	_ = tempFile.Close()
 
 	// Replace the original file with the cleaned version
 	return os.Rename(tempFilePath, profilePath)
@@ -136,7 +136,7 @@ func Uninstall() error {
 	govmDir := filepath.Join(homedir, ".govm")
 	govmBinDir := "/usr/local/bin"
 
-	// Check if user has sudo access
+	// Check if the user has sudo access
 	hasSudo := checkSudo()
 	if !hasSudo {
 		colorPrintln(Blue, "No sudo access detected. Assuming govm was installed locally.")
@@ -150,7 +150,7 @@ func Uninstall() error {
 	colorPrintln(Blue, "Removing govm binary...")
 	govmBinaryPath := filepath.Join(govmBinDir, "govm")
 	if _, err := os.Stat(govmBinaryPath); err == nil {
-		if hasSudo && govmBinDir == "/usr/local/bin" {
+		if hasSudo {
 			if err := removeFile(govmBinaryPath, true); err != nil {
 				return fmt.Errorf("failed to remove govm binary: %v", err)
 			} else {
@@ -194,8 +194,8 @@ func Uninstall() error {
 	// Final success message
 	colorPrintln(Green+Bold, "✓ govm has been successfully removed from your system!")
 	colorPrintln(Blue, "To ensure all changes take effect, please restart your terminal or run:")
-	fmt.Fprintf(os.Stdout, "    source %s\n\n", shellProfile)
-	fmt.Fprintln(os.Stdout, "Thank you for using govm!")
+	_, _ = fmt.Fprintf(os.Stdout, "    source %s\n\n", shellProfile)
+	_, _ = fmt.Fprintln(os.Stdout, "Thank you for using govm!")
 
 	return nil
 }

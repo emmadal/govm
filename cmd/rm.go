@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RmCmd represents the rm command
-var RmCmd = &cobra.Command{
+// rmCmd represents the rm command
+var rmCmd = &cobra.Command{
 	Use:     "rm",
 	Short:   "Remove a specific Go version",
 	Example: strings.Join([]string{"$ govm rm 1.21.0"}, "\n"),
