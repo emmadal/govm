@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/emmadal/govm/internal"
-	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
 )
 
@@ -30,16 +28,16 @@ var removeCmd = &cobra.Command{
 // removeGovm removes govm from the system
 func removeGovm() error {
 	// Ask for confirmation
-	confirmed, err := pkg.ConfirmRemoval()
-	if !confirmed || err != nil {
-		return err
-	}
-
-	// Use the Go implementation to uninstall govm
-	err = internal.Uninstall()
-	if err != nil {
-		return fmt.Errorf("failed to uninstall govm: %v", err)
-	}
+	//confirmed, err := pkg.ConfirmRemoval()
+	//if !confirmed || err != nil {
+	//	return err
+	//}
+	//
+	//// Use the Go implementation to uninstall govm
+	//err = internal.Uninstall()
+	//if err != nil {
+	//	return fmt.Errorf("failed to uninstall govm: %v", err)
+	//}
 
 	return nil
 }

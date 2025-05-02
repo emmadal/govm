@@ -28,7 +28,7 @@ With **govm**, you can quickly install any Go version, switch between them effor
 
 - **Automatic Updates** – Keep your Go environment up to date with the latest releases.
 
-- **Cross-Platform Support** – Works on Linux and macOS (Windows support coming soon).
+- **Cross-Platform Support** – Works on Linux, macOS, and Windows.
 
 - **Minimal and Fast** – Lightweight with optimized performance.
 
@@ -40,7 +40,9 @@ With **govm**, you can quickly install any Go version, switch between them effor
 
 ## 🛠️ Installation
 
-To install `govm`, run the following command:
+### Linux and macOS
+
+To install `govm` on Linux or macOS, run the following command:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
@@ -50,6 +52,14 @@ or
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
+```
+
+### Windows
+
+To install `govm` on Windows, open PowerShell as Administrator and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.ps1 | iex
 ```
 
 ---
@@ -65,7 +75,7 @@ govm install <version>
 ### Using a specific Go version
 
 ```bash
-govm use <version>
+govm use go<version>
 ```
 
 ### Listing installed Go versions
@@ -77,7 +87,7 @@ govm list
 ### Removing a Go version
 
 ```bash
-govm rm <version>
+govm rm go<version>
 ```
 
 ### Updating govm
@@ -104,8 +114,9 @@ govm uninstall
 
 ## 🛠️ Requirements
 
-- Bash 3.2 or later
-- A POSIX-compliant system (Linux, macOS, etc.)
+- Bash 3.2 or later (for Linux/macOS)
+- PowerShell 5.1 or later (for Windows)
+- A POSIX-compliant system (Linux, macOS) or Windows 7/10/11
 
 ---
 
@@ -122,4 +133,3 @@ This project is licensed under the MIT License—see the [LICENSE](LICENSE) file
 ## Support
 
 If you encounter any issues or have questions, please file an issue on the [GitHub repository](https://github.com/emmadal/govm/issues).
-
