@@ -5,9 +5,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/emmadal/govm/pkg"
 	"strings"
 
-	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +17,9 @@ var rmCmd = &cobra.Command{
 	Short:   "Remove a specific Go version",
 	Example: strings.Join([]string{"$ govm rm 1.21.0"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
+		if strings.Contains(args[0], "go") {
+			return fmt.Errorf("invalid version format. Please enter a valid version")
+		}
 		if len(args) > 1 || len(args) == 0 {
 			return fmt.Errorf("expect one argument")
 		}
@@ -24,8 +27,8 @@ var rmCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Remove the Go version
-		err := pkg.RemoveGoVersion(args[0])
-		if err != nil {
+		binary := pkg.Binary{}
+		if err := binary.RemoveGoVersion(args[0]); err != nil {
 			return err
 		}
 		return nil
