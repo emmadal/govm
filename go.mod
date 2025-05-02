@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.9.1
+	golang.org/x/sync v0.13.0
 )
 
 require (
