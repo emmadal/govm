@@ -36,15 +36,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # You can adjust this to your preferred Go version
+          go-version: '1.24' # You can adjust this to your preferred Go version
 
       - name: Build binaries
         run: |
           # Create a directory for the binaries
           mkdir -p build
 
-          # List of OSes and architectures to build for
-          PLATFORMS=("linux/amd64" "linux/arm64" "linux/386" "darwin/amd64" "darwin/arm64")
+          # List of OS and architectures to build for
+          PLATFORMS=("linux/amd64" "linux/arm64" "linux/386" "darwin/amd64" "darwin/arm64" "windows/amd64" 
+          "windows/arm64" "windows/386" )
           
           # Build for each platform
           for PLATFORM in "${PLATFORMS[@]}"; do
@@ -82,5 +83,8 @@ jobs:
             build/govm_linux_386
             build/govm_darwin_amd64
             build/govm_darwin_arm64
+            build/govm_windows_amd64.exe
+            build/govm_windows_arm64.exe
+            build/govm_windows_386.exe
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
