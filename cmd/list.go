@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/emmadal/govm/pkg"
 	"strings"
 
-	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
 )
 
-// listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List installed Go versions",
@@ -20,11 +19,10 @@ var listCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// List installed Go versions
-		err := pkg.ListGoVersions()
-		if err != nil {
+		binary := pkg.Binary{}
+		if err := binary.GetAllVersions(); err != nil {
 			return err
 		}
-		return nil
+		return binary.GoVersionDetails()
 	},
 }
