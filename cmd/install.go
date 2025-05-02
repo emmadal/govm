@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -12,13 +11,16 @@ import (
 
 const MinVersion = "1.21.0"
 
-// installCmd represents the install command
 var installCmd = &cobra.Command{
 	Use:     "install",
-	Short:   "Install a specific Go version",
+	Short:   "Install a specific go version",
 	Example: strings.Join([]string{"$ govm install 1.21.0"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
+		if strings.Contains(args[0], "go") {
+			return fmt.Errorf("invalid version format. Please enter a valid version")
+		}
 		if len(args) > 1 || len(args) == 0 {
+
 			return fmt.Errorf("expect one argument")
 		}
 		return nil
@@ -27,48 +29,42 @@ var installCmd = &cobra.Command{
 		if len(args[0]) < 6 {
 			return fmt.Errorf("invalid version format. Please enter a valid version")
 		}
+
 		// Check if a version is >= MinVersion
 		if !compareVersions(args[0], MinVersion) {
-			return fmt.Errorf("minimum supported version is %s. Please install a up-to-date version", MinVersion)
+			return fmt.Errorf("minimum supported version is %s. Please install a newer version", MinVersion)
 		}
+
+		tarball := pkg.Tarball{}
+		directory := pkg.Directory{}
+
+		// Get the directories
+		if err := directory.GetDirectories(); err != nil {
+			return err
+		}
+
+		// Create the config directory
+		if err := directory.CreateInstallDir(); err != nil {
+			return err
+		}
+
+		// Download the Go version
+		if err := tarball.DownloadGoVersion(args[0], directory.CacheDir); err != nil {
+			return err
+		}
+
 		// Install the Go version
-		return installGoVersion(args[0])
-	},
-}
-
-func installGoVersion(version string) error {
-	if err := pkg.CreateConfigDir(); err != nil {
-		return err
-	}
-
-	// Check if the version is already downloaded
-	cachedFile, err := pkg.CachedGoVersion(version)
-	if err == nil {
-		_, _ = fmt.Fprintf(
-			os.Stdout, "%s%s%s is already downloaded. Skipping download\n", pkg.Blue_ANSI, version, pkg.Reset_ANSI,
-		)
-		if err := pkg.UnzipDependency(pkg.REINSTALL, cachedFile, version); err != nil {
+		if err := tarball.InstallVersion(tarball.File.Name(), args[0], directory.ConfigDir); err != nil {
 			return err
 		}
-		if err := pkg.UseGoVersion(version); err != nil {
+
+		// Export the Go version
+		if err := tarball.UseGoVersion(args[0], directory.ConfigDir); err != nil {
 			return err
 		}
+
 		return nil
-	}
-	// Download the Go version
-	file, err := pkg.DownloadGoVersion(version)
-	if err != nil {
-		return err
-	}
-	// Unzip the downloaded file
-	if err := pkg.UnzipDependency(pkg.INSTALL, file, version); err != nil {
-		return err
-	}
-	// Export the Go version
-	if err := pkg.UseGoVersion(version); err != nil {
-		return err
-	}
-	return nil
+	},
 }
 
 func compareVersions(a, b string) bool {
