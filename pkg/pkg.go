@@ -3,299 +3,132 @@ package pkg
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"golang.org/x/sync/errgroup"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"runtime"
+	"slices"
 	"strings"
 	"time"
-
-	"github.com/schollz/progressbar/v3"
 )
 
-const (
-	config         = ".govm"
-	goVersions     = "versions"
-	goCache        = ".cache"
-	GO_RELEASE_URL = "https://golang.org/dl"
-	Green_ANSI     = "\033[32m"
-	Reset_ANSI     = "\033[0m"
-	Blue_ANSI      = "\033[34m"
-	Red_ANSI       = "\033[31m"
-	REINSTALL      = "Reinstalling"
-	INSTALL        = "Installing"
-	GO_PATH        = "go"
-)
-
-type Tarball struct {
-	Url  string
-	Arch string
-	Ext  string
-}
-
-// GetURLByOS returns the download URL for a specific Go version.
-func (t *Tarball) GetURLByOS(version string) string {
-	if runtime.GOOS == "windows" {
-		t.Ext = ".zip"
-	} else {
-		t.Ext = ".tar.gz"
-	}
-	t.Arch = fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-	t.Url = fmt.Sprintf("%s/go%s.%s%s", GO_RELEASE_URL, version, t.Arch, t.Ext)
-	return t.Url
-}
-
-// GetArch returns the architecture.
-func (t *Tarball) GetArch() string {
-	return t.Arch
-}
-
-// GetUrl returns the download URL.
-func (t *Tarball) GetUrl() string {
-	return t.Url
-}
-
-// GetExt returns the extension.
-func (t *Tarball) GetExt() string {
-	return t.Ext
+type Binary struct {
+	Versions   []string
+	LatestTag  string
+	CachedGo   string
+	InstallDir string
 }
 
 // CachedGoVersion returns the cached Go version.
-func CachedGoVersion(version string) (string, error) {
-	cachePath, err := GetCacheDir()
-	if err != nil {
-		return "", err
-	}
+func (b *Binary) CachedGoVersion(version string) error {
 	t := Tarball{}
+	dir := Directory{}
 
-	url := t.GetURLByOS(version)
-	if url == "" {
-		return "", fmt.Errorf("unable to get download URL for the system")
+	if err := dir.GetDirectories(); err != nil {
+		return err
 	}
 
-	fileName := fmt.Sprintf("go%s.%s%s", version, t.GetArch(), t.GetExt())
-	cachedFile := filepath.Join(cachePath, fileName)
+	t.GetURL(version)
+	fileName := fmt.Sprintf("go%s.%s", version, t.GetArchWithExt())
+	cachedFile := filepath.Join(dir.CacheDir, fileName)
 
 	// Check if the cached file exists
 	if _, err := os.Stat(cachedFile); err == nil {
-		return cachedFile, nil
-	} else if os.IsNotExist(err) {
-		return "", fmt.Errorf("cached file for Go version %s not found", version)
-	} else {
-		return "", fmt.Errorf("error checking cached file: %v", err)
-	}
-}
-
-// DownloadGoVersion downloads a specific Go version.
-func DownloadGoVersion(version string) (string, error) {
-	// Get download URL for the system
-	t := Tarball{}
-	goURLUrl := t.GetURLByOS(version)
-	if goURLUrl == "" {
-		return "", fmt.Errorf("unable to get download URL for the system")
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequest(http.MethodGet, goURLUrl, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %s", err.Error())
-	}
-
-	// Send HTTP request
-	client := &http.Client{Timeout: 55 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send HTTP request: %s", err.Error())
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("no version go%s found. please check the version number", version)
-	}
-
-	// Create a cache directory
-	cachePath, err := CreateCacheDir()
-	if err != nil {
-		return "", err
-	}
-
-	// Create file
-	file := filepath.Join(cachePath, fmt.Sprintf("go%s.%s%s", version, t.GetArch(), t.GetExt()))
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return "", fmt.Errorf("failed to create file %s", file)
-	}
-	defer f.Close()
-
-	// Copy the file to the cache directory
-	if resp.ContentLength > 0 {
-		// Create progress bar
-		ansiColor := fmt.Sprintf("%s===>%s", Green_ANSI, Reset_ANSI)
-		bar := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("%s Downloading go%s", ansiColor, version))
-		if _, err := io.Copy(io.MultiWriter(bar, f), resp.Body); err != nil {
-			return "", fmt.Errorf("failed to copy %s", file)
-		}
-	}
-	return file, nil
-}
-
-// UnzipDependency unzips a dependency.
-func UnzipDependency(text, file, version string) error {
-	ansiColor := fmt.Sprintf("%s===>%s", Blue_ANSI, Reset_ANSI)
-	fmt.Fprintf(os.Stdout, "%s %s %sgo%s%s\n", ansiColor, text, Green_ANSI, version, Reset_ANSI)
-
-	versionDir, err := GetConfigDir()
-	if err != nil {
-		return err
-	}
-
-	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
-	if err := os.MkdirAll(versionFolder, 0755); err != nil {
-		return fmt.Errorf("unable to create version folder %s", versionFolder)
-	}
-
-	switch runtime.GOOS {
-	case "linux", "darwin":
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("tar -xzf %s --strip-components=1 -C %s", file, versionFolder))
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to unzip %s", file)
-		}
+		b.CachedGo = cachedFile
+		b.InstallDir = dir.ConfigDir
 		return nil
-	default:
-		return fmt.Errorf("Unsupported OS: %s", runtime.GOOS)
+	} else if os.IsNotExist(err) {
+		return fmt.Errorf("go version %s not found", version)
+	} else {
+		return fmt.Errorf("error checking cached file: %v", err)
 	}
 }
 
-// ListGoVersions lists installed Go versions.
-func ListGoVersions() error {
-	cachePath, err := GetCacheDir()
-	if err != nil {
+// GoVersionDetails prints the Go version details.
+func (b *Binary) GoVersionDetails() error {
+	s := ShellConfig{}
+
+	// Try getting the active Go version
+	if err := s.GetActiveGoVersion(); err != nil {
 		return err
 	}
-
-	files, err := os.ReadDir(cachePath)
-	if err != nil {
-		return err
-	}
-
-	if len(files) == 0 {
-		return fmt.Errorf("No Go versions found. Install a version with 'govm install <version>'")
-	}
-
-	arch := fmt.Sprintf(".%s-%s", runtime.GOOS, runtime.GOARCH)
-
-	// Try getting the active Go version, but don't exit if it fails
-	activeGoVersion, err := GetActiveGoVersion()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Warning: Could not determine active Go version")
-		activeGoVersion = ""
-	}
-
-	// Match Go version format
-	re := regexp.MustCompile(`go(\d+\.\d+\.\d+([a-z]+\d+)?)`)
 	sb := strings.Builder{}
-	found := false
 
-	// Loop through files
-	for _, file := range files {
-		name := file.Name()
-		if strings.HasPrefix(name, GO_PATH) && strings.Contains(name, arch) {
-			matches := re.FindStringSubmatch(name)
-			if len(matches) > 1 {
-				version := matches[1]
-				color := Red_ANSI
-				status := "N/A - Downloaded"
+	// Print the active Go version
+	if slices.Contains(b.Versions, s.ActiveVersion) {
+		version := TextGreen("→ (Active) - " + s.ActiveVersion + "\n")
+		sb.WriteString(version)
+	}
 
-				if version == activeGoVersion {
-					color = Green_ANSI
-					status = "(Active)"
-				}
-				sb.WriteString(fmt.Sprintf("%s→ %s %s%s\n", color, version, status, Reset_ANSI))
-				found = true
-			}
+	// Print all versions and their status
+	for _, name := range b.Versions {
+		if name == s.ActiveVersion {
+			continue
 		}
+		sb.WriteString(TextRed("→ (Inactive) - " + name + "\n"))
 	}
 
-	// Print the list of Go versions
-	if !found {
-		return fmt.Errorf("No matching Go versions found for architecture %s", arch)
-	}
-	fmt.Fprint(os.Stdout, sb.String())
+	BlackPrintln(sb.String())
 	return nil
 }
 
 // RemoveGoVersion removes a specific Go version.
-func RemoveGoVersion(version string) error {
+func (b *Binary) RemoveGoVersion(version string) error {
 	// Verify if the Go version is active
-	activeGoVersion, err := GetActiveGoVersion()
-	if err != nil {
+	s := ShellConfig{}
+	goVersion := fmt.Sprintf("go%s", version)
+
+	if err := s.GetActiveGoVersion(); err != nil {
 		return err
 	}
-	if version == activeGoVersion {
-		return fmt.Errorf("%s is currently active. Please switch to another version", version)
+	if goVersion == s.ActiveVersion {
+		return fmt.Errorf("cannot remove the active Go version")
 	}
 
 	// Check if the version exists before proceeding
-	cachedFile, err := CachedGoVersion(version)
-	if err != nil {
-		return fmt.Errorf("Go version %s is not installed", version)
+	if err := b.CachedGoVersion(version); err != nil {
+		return err
 	}
-
-	// Verify the installation directory exists
-	versionDir, err := GetConfigDir()
-	if err != nil {
-		return fmt.Errorf("failed to get config directory: %v", err)
-	}
-
-	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
-	if _, err := os.Stat(versionFolder); os.IsNotExist(err) {
-		// Only the cached file exists, not the installation
-		fmt.Fprintf(
-			os.Stdout, "%sWarning: Installation directory for Go %s not found, but cached file exists%s\n",
-			Red_ANSI, version, Reset_ANSI,
-		)
-	}
-
 	// Ask for confirmation
 	response := ""
-	fmt.Fprintf(os.Stdout, "Are you sure you want to remove Go version %s? (y/n): ", version)
-	_, err = fmt.Scanln(&response)
-	if err != nil {
-		return fmt.Errorf("failed to read input: %v", err)
+	fmt.Fprintf(os.Stdout, "Do you want to remove go%s? (y/n): ", version)
+	if _, err := fmt.Scanln(&response); err != nil {
+		return err
 	}
-
 	response = strings.ToLower(strings.TrimSpace(response))
 	if response != "y" {
-		fmt.Fprintf(os.Stdout, "%sCancelling removal of Go version %s%s\n", Red_ANSI, version, Reset_ANSI)
+		// User cancelled
+		RedPrintln("Removal cancelled")
 		return nil
 	}
+	// Remove the Go version
+	g := errgroup.Group{}
+	g.SetLimit(2)
+	fmt.Fprintf(os.Stdout, "Removing go%s...\n", version)
 
-	fmt.Fprintf(os.Stdout, "Removing Go version %s...\n", version)
-
-	// Remove cached file
-	if err := os.Remove(cachedFile); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove cached file %s: %v", cachedFile, err)
+	g.Go(
+		func() error {
+			return os.Remove(b.CachedGo)
+		},
+	)
+	g.Go(
+		func() error {
+			return os.RemoveAll(filepath.Join(b.InstallDir, goVersion))
+		},
+	)
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to remove go%s", version)
 	}
-
-	// Remove version folder
-	if err := os.RemoveAll(versionFolder); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove version folder %s: %v", versionFolder, err)
-	}
-
-	fmt.Fprintf(os.Stdout, "%sGo version %s has been removed successfully.%s\n", Green_ANSI, version, Reset_ANSI)
+	GreenPrintln("Successfully removed Go version " + version + "\n")
 	return nil
 }
 
-// ConfirmRemoval asks for user confirmation to remove govm
-func ConfirmRemoval() (bool, error) {
+// UninstallRemoval prompts the user for confirmation to remove govm
+func UninstallRemoval() (bool, error) {
 	var sb strings.Builder
 
 	// Build the confirmation message in memory using strings.Builder
-	fmt.Fprintf(&sb, "%s%s%s\n", Red_ANSI, "This will completely remove govm from your system, including:", Reset_ANSI)
+	fmt.Fprintf(&sb, TextRed("This will completely remove govm from your system, including:"))
 	fmt.Fprintln(&sb, "  - The govm binary")
 	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
 	fmt.Fprintln(&sb, "  - All govm configuration files")
@@ -327,26 +160,46 @@ func ConfirmRemoval() (bool, error) {
 }
 
 // GetLatestTag returns the latest version tag from GitHub
-func GetLatestTag() (string, error) {
-	var latestTag struct {
+func (b *Binary) GetLatestTag() error {
+	var tag struct {
 		TagName string `json:"tag_name"`
 	}
 	// Get the latest version tag
 	req, err := http.NewRequest("GET", "https://api.github.com/repos/emmadal/govm/releases/latest", nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request")
+		return fmt.Errorf("failed to create HTTP request")
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to get latest tag")
+		return fmt.Errorf("failed to get latest tag")
 	}
 	defer resp.Body.Close()
 
-	if err := json.NewDecoder(resp.Body).Decode(&latestTag); err != nil {
-		return "", fmt.Errorf("failed to decode latest tag")
+	if err := json.NewDecoder(resp.Body).Decode(&tag); err != nil {
+		return fmt.Errorf("failed to decode latest tag")
 	}
+	b.LatestTag = tag.TagName
+	return nil
+}
 
-	return strings.TrimSpace(latestTag.TagName), nil
+// GetAllVersions returns all versions downloaded
+func (b *Binary) GetAllVersions() error {
+	var versionPath []string
+	homeDir, _ := os.UserHomeDir()
+	entries, err := os.ReadDir(filepath.Join(homeDir, ".govm", "versions", "go"))
+	if err != nil {
+		return fmt.Errorf("failed to read binaries directory")
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("no versions found. Install a version with 'govm install <version>")
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			versionPath = append(versionPath, entry.Name())
+		}
+	}
+	b.Versions = versionPath
+	return nil
 }

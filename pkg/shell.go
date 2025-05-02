@@ -4,10 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 )
+
+type ShellConfig struct {
+	Name          string
+	Path          string
+	GoPath        string
+	ActiveVersion string
+}
 
 // UpdateShellProfile updates the shell profile.
 func UpdateShellProfile(goPath string) error {
@@ -78,56 +84,19 @@ func RemoveOldGoPaths(shellConfig string) error {
 }
 
 // GetActiveGoVersion returns the active Go version.
-func GetActiveGoVersion() (string, error) {
+func (s *ShellConfig) GetActiveGoVersion() error {
 	// Check if go is installed
 	if _, err := exec.LookPath("go"); err != nil {
-		return "", fmt.Errorf("go is not installed. Please install go first with 'govm install <version>'")
+		return fmt.Errorf("go is not installed. Please install go first with 'govm install <version>'")
 	}
 
 	// Get an active Go version
 	cmd := exec.Command("go", "version")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("could not determine active Go version")
+		return fmt.Errorf("could not determine active Go version")
 	}
-	// Extract a version using regex
-	re := regexp.MustCompile(`\d+\.\d+\.\d+`)
-	match := re.FindString(string(output))
-	if match == "" {
-		return "", fmt.Errorf("could not determine active Go version")
-	}
-	return match, nil
-}
-
-// UseGoVersion changes the active Go version.
-func UseGoVersion(version string) error {
-	goVersionDir, err := GetConfigDir()
-	if err != nil {
-		return err
-	}
-
-	goPath := fmt.Sprintf("%s/%s%s/bin", goVersionDir, GO_PATH, version)
-	shellConfig, err := GetShellConfig()
-	if err != nil {
-		return err
-	}
-
-	// Set PATH for the current session
-	newPath := fmt.Sprintf("%s%c%s", goPath, os.PathListSeparator, os.Getenv("PATH"))
-	if err := os.Setenv("PATH", newPath); err != nil {
-		return err
-	}
-
-	// Persist PATH update in shell profile
-	err = UpdateShellProfile(goPath)
-	if err != nil {
-		return err
-	}
-
-	_, _ = fmt.Fprintf(
-		os.Stdout, "✅ Switched to go%s. Run 'source ~/%s' or restart your terminal to apply permanently.\n", version,
-		shellConfig,
-	)
-
+	versions := strings.Split(string(output), " ")
+	s.ActiveVersion = versions[2]
 	return nil
 }

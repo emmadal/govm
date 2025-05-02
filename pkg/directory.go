@@ -6,60 +6,29 @@ import (
 	"path/filepath"
 )
 
-// GetHomeDir returns the home directory.
-func GetHomeDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("unable to get user home directory")
-	}
-	if homeDir == "" {
-		return "", fmt.Errorf("home directory cannot be empty")
-	}
-	return homeDir, nil
+type Directory struct {
+	ConfigDir string
+	CacheDir  string
 }
 
-// CreateConfigDir creates the config directory.
-func CreateConfigDir() error {
-	homeDir, err := GetHomeDir()
+// GetDirectories returns the config and cache directories.
+func (d *Directory) GetDirectories() error {
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get home directory")
 	}
-	configPath := filepath.Join(homeDir, config, goVersions, GO_PATH)
-
-	if err := os.MkdirAll(configPath, 0755); err != nil {
-		return fmt.Errorf("unable to create config directory")
-	}
+	d.ConfigDir = filepath.Join(homeDir, ".govm", "versions", "go")
+	d.CacheDir = filepath.Join(homeDir, ".govm", ".cache")
 	return nil
 }
 
-// CreateCacheDir creates the cache directory.
-func CreateCacheDir() (string, error) {
-	homeDir, err := GetHomeDir()
-	if err != nil {
-		return "", err
+// CreateInstallDir creates the config directory.
+func (d *Directory) CreateInstallDir() error {
+	if err := os.MkdirAll(d.ConfigDir, 0755); err != nil {
+		return fmt.Errorf("unable to create config directory")
 	}
-	cachePath := filepath.Join(homeDir, config, goCache)
-
-	if err := os.MkdirAll(cachePath, 0755); err != nil {
-		return "", fmt.Errorf("unable to create cache directory")
+	if err := os.MkdirAll(d.CacheDir, 0755); err != nil {
+		return fmt.Errorf("unable to create cache directory")
 	}
-	return cachePath, nil
-}
-
-// GetConfigDir returns the config directory.
-func GetConfigDir() (string, error) {
-	homeDir, err := GetHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(homeDir, config, goVersions, GO_PATH), nil
-}
-
-// GetCacheDir returns the cache directory.
-func GetCacheDir() (string, error) {
-	homeDir, err := GetHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(homeDir, config, goCache), nil
+	return nil
 }
