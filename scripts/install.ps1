@@ -5,11 +5,23 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Ensure TLS 1.2 or higher is used for HTTPS connections (required for GitHub API)
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12, [Net.SecurityProtocolType]::Tls13
+} catch {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+}
+
 Write-Host "Installing govm - Go Version Manager" -ForegroundColor Blue
 
 ## Detect architecture
 $arch = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
-$goArch = switch ($arch) {
+# Fallback to PROCESSOR_ARCHITEW6432 if running 32-bit PowerShell on 64-bit Windows
+if ($arch -eq "x86" -and [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITEW6432") -ne $null) {
+    $arch = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITEW6432")
+}
+
+$goArch = switch ($arch.ToUpper()) {
     "AMD64"   { "amd64" }
     "ARM64"   { "arm64" }
     "X86"     { "386" }
@@ -44,7 +56,8 @@ try {
     $latestVersion = (Invoke-RestMethod -Uri "https://api.github.com/repos/emmadal/govm/releases/latest").tag_name
 }
 catch {
-    Write-Host "Could not retrieve latest version. Using latest available." -ForegroundColor Yellow
+    Write-Host "Could not retrieve latest version information: $_" -ForegroundColor Yellow
+    Write-Host "Using latest available release." -ForegroundColor Yellow
     $latestVersion = "unknown"
 }
 
@@ -53,10 +66,11 @@ $downloadUrl = "https://github.com/emmadal/govm/releases/latest/download/govm_wi
 
 Write-Host "Downloading govm binary for windows_$goArch..." -ForegroundColor Blue
 try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile "govm.exe"
+    Write-Host "Downloading from $downloadUrl..." -ForegroundColor Blue
+    Invoke-WebRequest -Uri $downloadUrl -OutFile "govm.exe" -UseBasicParsing
 }
 catch {
-    Write-Host "Failed to download govm binary." -ForegroundColor Red
+    Write-Host "Failed to download govm binary: $_" -ForegroundColor Red
     Write-Host "Please ensure you have a working internet connection and try again." -ForegroundColor Red
     Write-Host "If the problem persists, please submit an issue at: https://github.com/emmadal/govm/issues" -ForegroundColor Red
     exit 1
@@ -75,18 +89,43 @@ if (-not (Test-Path "govm.exe") -or (Get-Item "govm.exe").Length -eq 0) {
 
 # Install govm binary
 Write-Host "Installing govm binary..." -ForegroundColor Blue
-Copy-Item "govm.exe" -Destination $govmBinDir
+try {
+    Copy-Item "govm.exe" -Destination $govmBinDir -Force
+} catch {
+    Write-Host "Failed to copy govm.exe to $govmBinDir: $_" -ForegroundColor Red
+    Write-Host "You may need administrator privileges to write to this location." -ForegroundColor Yellow
+    exit 1
+}
 
-# Create VERSION file with the latest version tag
-$latestVersion | Out-File -FilePath (Join-Path $govmBinDir "VERSION") -Encoding utf8
+# Create VERSION file with the latest version tag and installation timestamp
+try {
+    "Version: $latestVersion" | Out-File -FilePath (Join-Path $govmBinDir "VERSION") -Encoding utf8
+    "Installed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Add-Content -Path (Join-Path $govmBinDir "VERSION") -Encoding utf8
+} catch {
+    Write-Host "Warning: Could not write version information: $_" -ForegroundColor Yellow
+}
 
-# Add to PATH if not already there
+# Check if we need to add govm to PATH
 $currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
-if (-not $currentPath.Contains($govmBinDir)) {
+if ($null -eq $currentPath) {
+    $currentPath = ""
+}
+
+# More precise PATH checking by splitting and comparing
+$pathEntries = $currentPath -split ';' | Where-Object { $_ -ne "" }
+if ($pathEntries -notcontains $govmBinDir) {
     Write-Host "Adding govm to your PATH..." -ForegroundColor Blue
-    $newPath = "$govmBinDir;$currentPath"
-    [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    $env:Path = "$govmBinDir;$env:Path"
+    try {
+        $newPath = "$govmBinDir;$currentPath".TrimEnd(';')
+        [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        $env:Path = "$govmBinDir;$env:Path"
+        Write-Host "Successfully updated PATH environment variable." -ForegroundColor Green
+    } catch {
+        Write-Host "Warning: Failed to update PATH: $_" -ForegroundColor Yellow
+        Write-Host "You may need to manually add $govmBinDir to your PATH." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "govm bin directory is already in your PATH." -ForegroundColor Green
 }
 
 # Clean up temporary directory

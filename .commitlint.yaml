@@ -1,11 +1,11 @@
 version: v0.10.1
 formatter: default
 rules:
-- header-min-length
-- header-max-length
-- body-max-line-length
-- footer-max-line-length
-- type-enum
+  - header-min-length
+  - header-max-length
+  - body-max-line-length
+  - footer-max-line-length
+  - type-enum
 severity:
   default: error
 settings:
@@ -47,17 +47,17 @@ settings:
     argument: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
   type-enum:
     argument:
-    - feat
-    - fix
-    - docs
-    - style
-    - refactor
-    - perf
-    - test
-    - build
-    - ci
-    - chore
-    - revert
+      - feat
+      - fix
+      - docs
+      - style
+      - refactor
+      - perf
+      - test
+      - build
+      - ci
+      - chore
+      - revert
   type-max-length:
     argument: -1
   type-min-length:

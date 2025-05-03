@@ -73,7 +73,12 @@ func (t *Tarball) DownloadGoVersion(version, cachePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file %s", f)
 	}
-	defer f.Close()
+	defer func() {
+		// If there was no previous error, capture any error from closing the file
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close file %s: %w", file, closeErr)
+		}
+	}()
 
 	// Copy the file to the cache directory
 	if resp.ContentLength > 0 {
