@@ -54,8 +54,15 @@ jobs:
             
             echo "Building for $OS/$ARCH..."
             
+            # Set output name with .exe for Windows
+            if [ "$OS" = "windows" ]; then
+              OUTPUT="build/govm_${OS}_${ARCH}.exe"
+            else
+              OUTPUT="build/govm_${OS}_${ARCH}"
+            fi
+            
             # Set environment variables for cross-compilation
-            GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "build/govm_${OS}_${ARCH}" .
+            GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "$OUTPUT" .
             
             if [ $? -ne 0 ]; then
               echo "Failed to build for $OS/$ARCH"
