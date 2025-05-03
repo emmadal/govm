@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/emmadal/govm/internal"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,26 +19,12 @@ var removeCmd = &cobra.Command{
 		}
 		return nil
 	},
-	SilenceErrors: true,
-	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return removeGovm()
+		// Ask for confirmation
+		confirmed, err := internal.UninstallConfirm()
+		if !confirmed || err != nil {
+			return err
+		}
+		return internal.Uninstall()
 	},
-}
-
-// removeGovm removes govm from the system
-func removeGovm() error {
-	// Ask for confirmation
-	//confirmed, err := pkg.ConfirmRemoval()
-	//if !confirmed || err != nil {
-	//	return err
-	//}
-	//
-	//// Use the Go implementation to uninstall govm
-	//err = internal.Uninstall()
-	//if err != nil {
-	//	return fmt.Errorf("failed to uninstall govm: %v", err)
-	//}
-
-	return nil
 }

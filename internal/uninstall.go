@@ -3,41 +3,55 @@ package internal
 import (
 	"bufio"
 	"fmt"
+	"github.com/emmadal/govm/pkg"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strings"
 )
 
-// ANSI color codes
-const (
-	Green = "\033[32m"
-	Blue  = "\033[34m"
-	Red   = "\033[31m"
-	Reset = "\033[0m"
-	Bold  = "\033[1m"
-)
-
-func colorPrintln(color, text string) {
-	_, _ = fmt.Fprint(os.Stdout, color+text+Reset+"\n")
-}
-
-// checkSudo checks if the user has sudo access
-func checkSudo() bool {
-	cmd := exec.Command("sudo", "-n", "true")
-	return cmd.Run() == nil
+// getGovmExecDir returns the directory where govm is installed
+func getGovmExecDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Join(homeDir, ".govm"), nil
+	}
+	return filepath.Join(homeDir, ".local", "bin", "govm"), nil
 }
 
 // detectShellProfile finds the appropriate shell profile file
 func detectShellProfile() string {
-	shell := os.Getenv("SHELL")
-	shellName := filepath.Base(shell)
+	// Windows doesn't traditionally use shell profiles like Unix systems
+	if runtime.GOOS == "windows" {
+		// For PowerShell users, find their profile
+		cmd := exec.Command(
+			"powershell", "-Command",
+			"if (!(Test-Path -Path $PROFILE)) { Write-Output 'none' } else { Write-Output $PROFILE }",
+		)
+		output, err := cmd.Output()
+		if err == nil {
+			profile := strings.TrimSpace(string(output))
+			if profile != "none" && profile != "" {
+				return profile
+			}
+		}
+		// Return an empty string if no PowerShell profile exists
+		return ""
+	}
 
+	// Unix systems
 	homedir, err := os.UserHomeDir()
 	if err != nil {
-		colorPrintln(Red, "Error getting home directory: "+err.Error())
-		os.Exit(1)
+		pkg.RedPrintln(err.Error())
 	}
+
+	shell := os.Getenv("SHELL")
+	shellName := filepath.Base(shell)
 
 	switch shellName {
 	case "bash":
@@ -53,19 +67,13 @@ func detectShellProfile() string {
 	}
 }
 
-// removeFile removes a file with optional sudo
-func removeFile(path string, useSudo bool) error {
-	if useSudo {
-		cmd := exec.Command("sudo", "rm", "-f", path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run()
-	}
-	return os.Remove(path)
-}
-
-// cleanShellProfile removes govm-related lines from shell profile
+// cleanShellProfile removes govm-related lines from the shell profile
 func cleanShellProfile(profilePath string) error {
+	// Skip for an empty profile path (Windows without PowerShell profile)
+	if profilePath == "" {
+		return nil
+	}
+
 	// Read the profile file
 	file, err := os.Open(profilePath)
 	if err != nil {
@@ -85,11 +93,21 @@ func cleanShellProfile(profilePath string) error {
 	scanner := bufio.NewScanner(file)
 	writer := bufio.NewWriter(tempFile)
 
+	// Adjust patterns for the current platform
 	govmPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`# govm installation`),
-		regexp.MustCompile(`export PATH="\${HOME}/\.local/bin:\${PATH}"`),
-		regexp.MustCompile(`export PATH="\${GOVM_DIR}/versions/go`),
+		regexp.MustCompile(`export PATH=.*\.local/bin.*`),
+		regexp.MustCompile(`export PATH=.*GOVM_DIR.*versions.*go`),
 		regexp.MustCompile(`export GOROOT=`),
+	}
+
+	// Add Windows-specific patterns
+	if runtime.GOOS == "windows" {
+		govmPatterns = append(
+			govmPatterns,
+			regexp.MustCompile(`\$env:Path.*govm.*`),
+			regexp.MustCompile(`\$env:GOROOT.*`),
+		)
 	}
 
 	for scanner.Scan() {
@@ -125,77 +143,95 @@ func cleanShellProfile(profilePath string) error {
 
 func Uninstall() error {
 	// Print header
-	colorPrintln(Red+Bold, "Removing govm - Go Version Manager")
+	pkg.RedPrintln("Removing govm - Go Version Manager\n")
 
-	// Define installation directories
-	homedir, err := os.UserHomeDir()
+	// Get platform-specific installation directories
+	govmDir, err := getGovmExecDir()
 	if err != nil {
-		return fmt.Errorf("error getting home directory: %v", err)
+		return err
 	}
 
-	govmDir := filepath.Join(homedir, ".govm")
-	govmBinDir := "/usr/local/bin"
-
-	// Check if the user has sudo access
-	hasSudo := checkSudo()
-	if !hasSudo {
-		colorPrintln(Blue, "No sudo access detected. Assuming govm was installed locally.")
-		govmBinDir = filepath.Join(homedir, ".local/bin")
-	}
-
-	// Detect shell profile
+	// Detect shell profile (maybe empty on Windows)
 	shellProfile := detectShellProfile()
 
-	// Remove govm binary
-	colorPrintln(Blue, "Removing govm binary...")
-	govmBinaryPath := filepath.Join(govmBinDir, "govm")
-	if _, err := os.Stat(govmBinaryPath); err == nil {
-		if hasSudo {
-			if err := removeFile(govmBinaryPath, true); err != nil {
-				return fmt.Errorf("failed to remove govm binary: %v", err)
-			} else {
-				colorPrintln(Green, "✓ Removed govm binary")
-			}
-		} else {
-			if err := removeFile(govmBinaryPath, false); err != nil {
-				return fmt.Errorf("failed to remove govm binary: %v", err)
-			} else {
-				colorPrintln(Green, "✓ Removed govm binary")
-			}
-		}
-	} else {
-		colorPrintln(Red, fmt.Sprintf("govm binary not found in %s", govmBinDir))
-	}
-
-	// Remove govm directories
-	colorPrintln(Blue, "Removing govm directories...")
+	// Remove govm
+	pkg.BluePrintln("Removing govm...\n")
 	if _, err := os.Stat(govmDir); err == nil {
 		if err := os.RemoveAll(govmDir); err != nil {
 			return fmt.Errorf("failed to remove govm directory: %v", err)
 		} else {
-			colorPrintln(Green, "✓ Removed govm directories")
+			pkg.GreenPrintln("✓ Removed govm directories\n")
 		}
 	} else {
-		colorPrintln(Red, fmt.Sprintf("govm directory not found at %s", govmDir))
+		pkg.RedPrintln(fmt.Sprintf("govm directory not found at %s", govmDir) + "\n")
 	}
 
-	// Clean shell profile
-	colorPrintln(Blue, fmt.Sprintf("Updating shell profile (%s)...", shellProfile))
-	if _, err := os.Stat(shellProfile); err == nil {
-		if err := cleanShellProfile(shellProfile); err != nil {
-			return fmt.Errorf("failed to update shell profile: %v", err)
+	// Clean shell profile (if it exists - may not exist on Windows)
+	if shellProfile != "" {
+		pkg.BluePrintln(fmt.Sprintf("Updating shell profile (%s)...", shellProfile) + "\n")
+		if _, err := os.Stat(shellProfile); err == nil {
+			if err := cleanShellProfile(shellProfile); err != nil {
+				return fmt.Errorf("failed to update shell profile: %v", err)
+			} else {
+				pkg.GreenPrintln("✓ Updated shell profile\n")
+			}
 		} else {
-			colorPrintln(Green, "✓ Updated shell profile")
+			pkg.RedPrintln(fmt.Sprintf("Shell profile not found at %s", shellProfile) + "\n")
 		}
-	} else {
-		return fmt.Errorf("shell profile not found at %s", shellProfile)
 	}
 
 	// Final success message
-	colorPrintln(Green+Bold, "✓ govm has been successfully removed from your system!")
-	colorPrintln(Blue, "To ensure all changes take effect, please restart your terminal or run:")
-	_, _ = fmt.Fprintf(os.Stdout, "    source %s\n\n", shellProfile)
-	_, _ = fmt.Fprintln(os.Stdout, "Thank you for using govm!")
+	pkg.GreenPrintln("✓ govm has been successfully removed from your system!\n")
 
+	// Platform-specific instructions for applying changes
+	if runtime.GOOS == "windows" {
+		if shellProfile != "" {
+			pkg.BluePrintln("Please restart your PowerShell or run in PowerShell:" + "\n")
+			pkg.BlackPrintln("    . " + shellProfile + "\n\n")
+		} else {
+			pkg.BluePrintln("Please restart your terminal.\n\n")
+		}
+	} else {
+		pkg.BluePrintln("Please restart your terminal or run in your shell:" + "\n")
+		pkg.BlackPrintln("    source " + shellProfile + "\n\n")
+	}
+
+	pkg.BlackPrintln("Thank you for using govm!")
 	return nil
+}
+
+// UninstallConfirm prompts the user for confirmation to remove govm
+func UninstallConfirm() (bool, error) {
+	var sb strings.Builder
+
+	// Build the confirmation message in memory using strings.Builder
+	fmt.Fprintf(&sb, pkg.TextRed("This will completely remove govm from your system, including:"))
+	fmt.Fprintln(&sb, "  - The govm binary")
+	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
+	fmt.Fprintln(&sb, "  - All govm configuration files")
+	fmt.Fprintln(os.Stdout, sb.String())
+
+	// Ask for user confirmation
+	var reply string
+
+	// Add the prompt to the builder
+	fmt.Fprint(os.Stdout, "Are you sure you want to proceed? (y/n): ")
+	_, err := fmt.Scanln(&reply)
+	if err != nil {
+		return false, fmt.Errorf("failed to read input: %v", err)
+	}
+
+	reply = strings.ToLower(strings.TrimSpace(reply))
+
+	// Handle valid responses
+	if reply == "y" {
+		return true, nil
+	} else if reply == "n" {
+		fmt.Fprintln(os.Stdout, "Removal cancelled.")
+		return false, nil
+	} else {
+		// Invalid input, re-prompt
+		fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
+		return false, nil
+	}
 }
