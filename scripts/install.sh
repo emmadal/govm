@@ -10,11 +10,18 @@ BOLD=$(printf '\033[1m')
 
 echo -e "${BLUE}${BOLD}Installing govm - Go Version Manager${RESET}"
 
-# Detect OS and architecture
+# Ensure we're on a Unix-based system (macOS or Linux)
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+if [[ "$OS" != "darwin" && "$OS" != "linux" ]]; then
+    echo -e "${RED}Error: This script only supports macOS and Linux.${RESET}"
+    echo -e "${RED}For Windows, please use the PowerShell script instead.${RESET}"
+    exit 1
+fi
+
+# Detect architecture
 ARCH="$(uname -m)"
 
-# Map architecture names
+# Map architecture names to Go standard
 case "${ARCH}" in
     x86_64)
         ARCH="amd64"
@@ -32,7 +39,7 @@ case "${ARCH}" in
         ;;
 esac
 
-# Define installation directories
+# Define Unix installation directories
 GOVM_DIR="${HOME}/.govm"
 GOVM_VERSIONS_DIR="${GOVM_DIR}/versions/go"
 GOVM_CACHE_DIR="${GOVM_DIR}/.cache"
@@ -53,7 +60,7 @@ echo -e "${BLUE}Creating govm directories...${RESET}"
 mkdir -p "${GOVM_VERSIONS_DIR}"
 mkdir -p "${GOVM_CACHE_DIR}"
 
-# Function to detect shell and profile file
+# Function to detect shell and profile file (Unix only)
 detect_shell_profile() {
     SHELL_NAME=$(basename "${SHELL}")
     
@@ -121,13 +128,13 @@ if [ ! -s govm ]; then
     
     echo -e "${RED}To build govm from source, you need Go installed on your machine.${RESET}"
     echo -e "${BLUE}Please install Go and then run:${RESET}"
-    echo "cd $(pwd) && go build -o govm && sudo mv govm ${GOVM_BIN_DIR}/"
+    echo "cd $(pwd) && go build -ldflags=\"-s -w\" -o govm && sudo mv govm ${GOVM_BIN_DIR}/"
     exit 1
 fi
 
 chmod +x govm
 
-# Install govm binary
+# Install govm binary (Unix-specific)
 echo -e "${BLUE}Installing govm binary...${RESET}"
 if [[ "${HAS_SUDO}" -eq 1 && "${GOVM_BIN_DIR}" == "/usr/local/bin" ]]; then
     sudo cp govm "${GOVM_BIN_DIR}/"
@@ -137,10 +144,11 @@ else
     chmod +x "${GOVM_BIN_DIR}/govm"
 fi
 
-# Add bin directory to PATH if needed
+# Add bin directory to PATH if needed (Unix shell specific)
 if [[ "${GOVM_BIN_DIR}" == "${HOME}/.local/bin" ]]; then
     if ! grep -q "${GOVM_BIN_DIR}" "${SHELL_PROFILE}"; then
         echo -e "${BLUE}Adding ${GOVM_BIN_DIR} to your PATH in ${SHELL_PROFILE}${RESET}"
+        # shellcheck disable=SC2129
         echo "" >> "${SHELL_PROFILE}"
         echo "# govm installation" >> "${SHELL_PROFILE}"
         echo "export PATH=\"\${HOME}/.local/bin:\${PATH}\"" >> "${SHELL_PROFILE}"
@@ -150,23 +158,11 @@ fi
 # Create VERSION file with the latest version tag
 echo "${LATEST_VERSION}" > "${HOME}/.local/bin/VERSION"
 
-# Clean up temporary directory
+# Clean up temporary directory (Unix-specific)
 cd
 rm -rf "${TMP_DIR}"
 
-echo -e "${GREEN}${BOLD}✓ govm has been successfully installed!${RESET}"
-echo ""
-echo "Now you can use govm to manage multiple Go versions without having Go pre-installed."
+echo -e "${GREEN}${BOLD}🎉 govm has been successfully installed!${RESET}"
 echo ""
 echo "To start using govm, you may need to restart your terminal or run:"
 echo -e "${BLUE}    source ${SHELL_PROFILE}${RESET}"
-echo ""
-echo "Usage examples:"
-echo -e "${BLUE}    govm install 1.21.6  # Install Go 1.21.6${RESET}"
-echo -e "${BLUE}    govm use 1.21.6      # Switch to Go 1.21.6${RESET}"
-echo -e "${BLUE}    govm latest          # Install the latest version of Go${RESET}"
-echo -e "${BLUE}    govm list            # List installed Go versions${RESET}"
-echo -e "${BLUE}    govm rm 1.21.6       # Remove Go 1.21.6${RESET}"
-echo -e "${BLUE}    govm update          # Update govm to the latest version${RESET}"
-echo ""
-echo -e "For more information, visit: ${BLUE}https://github.com/emmadal/govm${RESET}"

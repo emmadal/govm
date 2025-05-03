@@ -7,12 +7,13 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Installing govm - Go Version Manager" -ForegroundColor Blue
 
-# Detect architecture
+## Detect architecture
 $arch = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
 $goArch = switch ($arch) {
-    "AMD64" { "amd64" }
-    "ARM64" { "arm64" }
-    "X86" { "386" }
+    "AMD64"   { "amd64" }
+    "ARM64"   { "arm64" }
+    "X86"     { "386" }
+    "x86_64"  { "amd64" }
     default {
         Write-Host "Unsupported architecture: $arch" -ForegroundColor Red
         Write-Host "Please submit an issue at: https://github.com/emmadal/govm/issues"
@@ -92,19 +93,7 @@ if (-not $currentPath.Contains($govmBinDir)) {
 Set-Location $env:USERPROFILE
 Remove-Item -Recurse -Force $tempDir
 
-Write-Host "✓ govm has been successfully installed!" -ForegroundColor Green
-Write-Host ""
-Write-Host "Now you can use govm to manage multiple Go versions without having Go pre-installed."
+Write-Host "🎉 govm has been successfully installed!" -ForegroundColor Green
 Write-Host ""
 Write-Host "To start using govm, you need to close and reopen your PowerShell/Command Prompt, or run:"
 Write-Host "    refreshenv" -ForegroundColor Blue
-Write-Host ""
-Write-Host "Usage examples:"
-Write-Host "    govm install 1.21.6  # Install Go 1.21.6" -ForegroundColor Blue
-Write-Host "    govm use 1.21.6      # Switch to Go 1.21.6" -ForegroundColor Blue
-Write-Host "    govm latest          # Install the latest version of Go" -ForegroundColor Blue
-Write-Host "    govm list            # List installed Go versions" -ForegroundColor Blue
-Write-Host "    govm rm 1.21.6       # Remove Go 1.21.6" -ForegroundColor Blue
-Write-Host "    govm update          # Update govm to the latest version" -ForegroundColor Blue
-Write-Host ""
-Write-Host "For more information, visit: https://github.com/emmadal/govm" -ForegroundColor Blue
