@@ -1,39 +1,23 @@
 package internal
 
 import (
-	"context"
 	"fmt"
+	"github.com/emmadal/govm/pkg"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/emmadal/govm/pkg"
 )
 
-// getInstallDir returns the appropriate installation directory based on sudo access
-func getInstallDir() string {
-	if checkSudo() {
-		return "/usr/local/bin"
+// getBinaryName returns the appropriate binary name based on platform
+func getBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "govm.exe"
 	}
-
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stdout, "\033[31mError getting home directory: %v\033[0m\n", err)
-		os.Exit(1)
-	}
-
-	localBin := filepath.Join(homedir, ".local", "bin")
-	// Ensure a local bin directory exists
-	if err := os.MkdirAll(localBin, 0755); err != nil {
-		_, _ = fmt.Fprintf(os.Stdout, "\033[31mError creating local bin directory: %v\033[0m\n", err)
-	}
-
-	return localBin
+	return "govm"
 }
 
 // detectPlatform returns the OS and architecture for download
@@ -43,7 +27,7 @@ func detectPlatform() (string, string, error) {
 	// Map architecture
 	arch := runtime.GOARCH
 	switch arch {
-	case "amd64", "arm64", "386":
+	case "amd64", "arm64", "386", "x86_64":
 		// These are already correctly named
 		break
 	default:
@@ -68,10 +52,15 @@ func downloadLatestRelease() (string, error) {
 		return "", err
 	}
 
-	// Construct download URL
-	downloadURL := fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s", goos, arch)
+	// Construct download URL and binary name based on a platform
+	var downloadURL string
+	if goos == "windows" {
+		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s.exe", goos, arch)
+	} else {
+		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s", goos, arch)
+	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "\033[34mDownloading latest govm binary for %s_%s...\033[0m\n", goos, arch)
+	pkg.BluePrintln(fmt.Sprintf("Downloading latest govm binary for %s_%s...\n", goos, arch))
 
 	// Download the binary
 	resp, err := http.Get(downloadURL)
@@ -82,7 +71,7 @@ func downloadLatestRelease() (string, error) {
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			_ = os.RemoveAll(tmpDir)
-			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing response body: %v\033[0m\n", err))
+			pkg.RedPrintln(fmt.Sprintf("Error closing response body: %v\n", err))
 		}
 	}()
 
@@ -92,7 +81,7 @@ func downloadLatestRelease() (string, error) {
 	}
 
 	// Save the binary to a temporary file
-	binaryPath := filepath.Join(tmpDir, "govm")
+	binaryPath := filepath.Join(tmpDir, getBinaryName())
 	outFile, err := os.OpenFile(binaryPath, os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
@@ -100,130 +89,145 @@ func downloadLatestRelease() (string, error) {
 	}
 
 	_, err = io.Copy(outFile, resp.Body)
-	defer func() {
-		err := outFile.Close()
-		if err != nil {
-			_ = os.RemoveAll(tmpDir)
-			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
-		}
-	}()
+	err2 := outFile.Close()
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("failed to write output file: %v", err)
+	}
+	if err2 != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("failed to close output file: %v", err2)
 	}
 
 	return binaryPath, nil
 }
 
-// UpdateGovm updates govm to the latest version
-func UpdateGovm() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	tag := make(chan string, 1)
-	tagErr := make(chan error, 1)
-
-	_, _ = fmt.Fprint(os.Stdout, "\033[34m\033[1mUpdating govm - Go Version Manager\033[0m\n")
-
-	// Get install directory
-	installDir := getInstallDir()
-	hasSudo := checkSudo() && installDir == "/usr/local/bin"
-
-	// Get the latest version tag
-	go func() {
-		latestTag, err := pkg.GetLatestTag()
-		if err != nil {
-			tagErr <- err
-			close(tagErr)
-			return
-		}
-		tag <- latestTag
-		close(tag)
+// copyFile copies a file from src to dst with appropriate permissions
+func copyFile(src, dst string) error {
+	// Open source file
+	inFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %v", err)
+	}
+	defer func() {
+		_ = inFile.Close()
 	}()
 
-	// Download the latest release
+	// Create a destination file
+	outFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %v", err)
+	}
+	defer func() {
+		_ = outFile.Close()
+	}()
+
+	// Copy the content
+	_, err = io.Copy(outFile, inFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %v", err)
+	}
+
+	return nil
+}
+
+// getInstallDir returns the appropriate installation directory based on sudo access
+func getInstallDir() string {
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		pkg.RedPrintln(fmt.Sprintf("Error getting home directory: %v\n", err))
+		os.Exit(1)
+	}
+
+	localBin := filepath.Join(homedir, ".local", "bin")
+	// Ensure a local bin directory exists
+	if err := os.MkdirAll(localBin, 0755); err != nil {
+		pkg.RedPrintln(fmt.Sprintf("Error creating local bin directory: %v\n", err))
+	}
+
+	return localBin
+}
+
+// getBinaryVersion returns the current version of govm
+func getBinaryVersion(latestVersion string) bool {
+	versionFile := filepath.Join(getInstallDir(), "VERSION")
+	data, err := os.ReadFile(versionFile)
+	if err != nil {
+		pkg.RedPrintln(fmt.Sprintf("Error reading version file: %v\n", err))
+		return false
+	}
+	lines := strings.SplitN(string(data), "\n", 2)
+	return strings.TrimSpace(lines[0]) == latestVersion
+}
+
+// UpdateGovm updates govm to the latest version
+func UpdateGovm() error {
+	pkg.BluePrintln("Updating govm - Go Version Manager\n")
+
+	// Get the installation directory and check admin rights
+	govmDir, err := getGovmExecDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine installation directory: %v", err)
+	}
+
+	// Ensure the installation directory exists
+	installDir := filepath.Dir(govmDir)
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("failed to create installation directory: %v", err)
+	}
+
+	// Get the latest version tag
+	pkg.BluePrintln("Checking for updates...\n")
+	binary := pkg.Binary{}
+	if err := binary.GetLatestTag(); err != nil {
+		return err
+	}
+
+	// Compare versions
+	if getBinaryVersion(binary.LatestTag) {
+		pkg.GreenPrintln("👍 govm is already up to date\n")
+		return nil
+	}
+
+	// Download the release
 	binaryPath, err := downloadLatestRelease()
 	if err != nil {
 		return err
 	}
+	// Clean up temp directory
 	defer func() {
-		if err := os.RemoveAll(binaryPath); err != nil {
-			_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError removing temporary file: %v\033[0m\n", err))
-		}
+		_ = os.RemoveAll(filepath.Dir(binaryPath))
 	}()
 
 	// Install the binary
-	_, _ = fmt.Fprint(os.Stdout, "\033[34mInstalling govm binary...\033[0m\n")
-	installPath := filepath.Join(installDir, "govm")
+	pkg.BluePrintln("Installing govm binary...\n")
+	installPath := filepath.Join(installDir, getBinaryName())
 
-	if hasSudo {
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("sudo cp %s %s", binaryPath, installPath))
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to install govm binary: %v", err)
-		}
-
-		chmodCmd := exec.Command("sh", "-c", fmt.Sprintf("sudo chmod +x %s", installPath))
-		if err := chmodCmd.Run(); err != nil {
-			return fmt.Errorf("failed to set execute permissions: %v", err)
-		}
-	} else {
-		// Copy the binary to the installation directory
-		inFile, err := os.Open(binaryPath)
-		if err != nil {
-			return fmt.Errorf("failed to open binary file: %v", err)
-		}
-		defer func() {
-			err := inFile.Close()
-			if err != nil {
-				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing input file: %v\033[0m\n", err))
-			}
-		}()
-
-		outFile, err := os.OpenFile(installPath, os.O_CREATE|os.O_WRONLY, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create output file: %v", err)
-		}
-		defer func() {
-			err := outFile.Close()
-			if err != nil {
-				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing output file: %v\033[0m\n", err))
-			}
-		}()
-
-		_, err = io.Copy(outFile, inFile)
-		if err != nil {
-			return fmt.Errorf("failed to copy binary: %v", err)
-		}
+	// Use direct copy for user directories
+	if err := copyFile(binaryPath, installPath); err != nil {
+		return fmt.Errorf("failed to install govm binary: %v", err)
 	}
 
-	// Wait for the latest tag
-	select {
-	case err := <-tagErr:
-		return err
-	case <-ctx.Done():
-		return fmt.Errorf("timeout waiting for latest tag")
-	case latestTag := <-tag:
-		file, err := os.OpenFile(filepath.Join(installDir, "VERSION"), os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to create VERSION file")
-		}
-		defer func() {
-			err := file.Close()
-			if err != nil {
-				_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[31mError closing VERSION file: %v\033[0m\n", err))
-			}
-		}()
-		sb := strings.Builder{}
-		sb.WriteString(latestTag + "\n")
-		sb.WriteString("time: " + time.Now().Format(time.RFC3339))
-		_, err = file.WriteString(sb.String())
-		if err != nil {
-			return fmt.Errorf("failed to write VERSION file")
-		}
-		_, _ = fmt.Fprint(os.Stdout, fmt.Sprintf("\033[32m\033[1m✓ govm has been successfully updated!\033[0m\n\n"))
-		_, _ = fmt.Fprint(
-			os.Stdout, fmt.Sprintf("\033[34mFor more information, visit: https://github.com/emmadal/govm\033[0m\n"),
-		)
+	// Create a VERSION file
+	versionFilePath := filepath.Join(installDir, "VERSION")
+	file, err := os.OpenFile(versionFilePath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create VERSION file: %v", err)
 	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	sb := strings.Builder{}
+	sb.WriteString(binary.LatestTag + "\n")
+	sb.WriteString(strings.TrimSpace("time: " + time.Now().Format(time.RFC3339)))
+	_, err = file.WriteString(sb.String())
+	if err != nil {
+		return fmt.Errorf("failed to write VERSION file: %v", err)
+	}
+
+	pkg.GreenPrintln("🎉 govm has been successfully updated!\n")
+	pkg.BluePrintln("For more information, visit: https://github.com/emmadal/govm")
 
 	return nil
 }

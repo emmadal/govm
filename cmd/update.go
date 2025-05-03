@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/emmadal/govm/internal"
 	"strings"
 
-	"github.com/emmadal/govm/internal"
 	"github.com/spf13/cobra"
 )
 
@@ -19,20 +19,7 @@ var updateCmd = &cobra.Command{
 		}
 		return nil
 	},
-	SilenceErrors: true,
-	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return updateGovm()
+		return internal.UpdateGovm()
 	},
-}
-
-// updateGovm updates govm to the latest version
-func updateGovm() error {
-	// Use the Go implementation to update govm
-	err := internal.UpdateGovm()
-	if err != nil {
-		return fmt.Errorf("failed to update govm: %v", err)
-	}
-
-	return nil
 }

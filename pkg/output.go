@@ -23,6 +23,11 @@ func GreenPrintln(text string) {
 	_, _ = fmt.Fprint(os.Stdout, GreenAnsi+text+ResetAnsi)
 }
 
+// BluePrintln prints text in blue to the console
+func BluePrintln(text string) {
+	_, _ = fmt.Fprint(os.Stdout, BlueAnsi+text+ResetAnsi)
+}
+
 // BlackPrintln prints text in black to the console
 func BlackPrintln(text string) {
 	_, _ = fmt.Fprint(os.Stdout, BlackAnsi+text+ResetAnsi)

@@ -123,42 +123,6 @@ func (b *Binary) RemoveGoVersion(version string) error {
 	return nil
 }
 
-// UninstallRemoval prompts the user for confirmation to remove govm
-func UninstallRemoval() (bool, error) {
-	var sb strings.Builder
-
-	// Build the confirmation message in memory using strings.Builder
-	fmt.Fprintf(&sb, TextRed("This will completely remove govm from your system, including:"))
-	fmt.Fprintln(&sb, "  - The govm binary")
-	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
-	fmt.Fprintln(&sb, "  - All govm configuration files")
-	fmt.Fprintln(os.Stdout, sb.String())
-
-	// Ask for user confirmation
-	var reply string
-
-	// Add the prompt to the builder
-	fmt.Fprint(os.Stdout, "Are you sure you want to proceed? (y/n): ")
-	_, err := fmt.Scanln(&reply)
-	if err != nil {
-		return false, fmt.Errorf("failed to read input: %v", err)
-	}
-
-	reply = strings.ToLower(strings.TrimSpace(reply))
-
-	// Handle valid responses
-	if reply == "y" {
-		return true, nil
-	} else if reply == "n" {
-		fmt.Fprintln(os.Stdout, "Removal cancelled.")
-		return false, nil
-	} else {
-		// Invalid input, re-prompt
-		fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
-		return false, nil
-	}
-}
-
 // GetLatestTag returns the latest version tag from GitHub
 func (b *Binary) GetLatestTag() error {
 	var tag struct {
@@ -175,7 +139,9 @@ func (b *Binary) GetLatestTag() error {
 	if err != nil {
 		return fmt.Errorf("failed to get latest tag")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if err := json.NewDecoder(resp.Body).Decode(&tag); err != nil {
 		return fmt.Errorf("failed to decode latest tag")
