@@ -1,86 +1,21 @@
 package cmd
 
 import (
-	"fmt"
-	"strconv"
-	"strings"
-
 	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
 )
 
-const MinVersion = "1.21.0"
-
 var installCmd = &cobra.Command{
-	Use:     "install",
-	Short:   "Install a specific go version",
-	Example: strings.Join([]string{"$ govm install 1.21.0"}, "\n"),
-	Args: func(cmd *cobra.Command, args []string) error {
-		if strings.Contains(args[0], "go") {
-			return fmt.Errorf("invalid version format. Please enter a valid version")
-		}
-		if len(args) > 1 || len(args) == 0 {
+	Use:   "install <version>",
+	Short: "Install a Go version and switch to it",
+	Long: `Install a Go version and switch to it.
 
-			return fmt.Errorf("expect one argument")
-		}
-		return nil
-	},
+<version> is an exact release (1.22.3, go1.23rc1), a minor line (1.22,
+which picks its newest patch release) or "latest". Downloads are verified
+against the SHA-256 checksums published on go.dev.`,
+	Example: "  govm install latest\n  govm install 1.22\n  govm install 1.21.5",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args[0]) < 6 {
-			return fmt.Errorf("invalid version format. Please enter a valid version")
-		}
-
-		// Check if a version is >= MinVersion
-		if !compareVersions(args[0], MinVersion) {
-			return fmt.Errorf("minimum supported version is %s. Please install a newer version", MinVersion)
-		}
-
-		tarball := pkg.Tarball{}
-		directory := pkg.Directory{}
-
-		// Get the directories
-		if err := directory.GetDirectories(); err != nil {
-			return err
-		}
-
-		// Create the config directory
-		if err := directory.CreateInstallDir(); err != nil {
-			return err
-		}
-
-		// Download the Go version
-		if err := tarball.DownloadGoVersion(args[0], directory.CacheDir); err != nil {
-			return err
-		}
-
-		// Install the Go version
-		if err := tarball.InstallVersion(tarball.File.Name(), args[0], directory.ConfigDir); err != nil {
-			return err
-		}
-
-		// Export the Go version
-		if err := tarball.UseGoVersion(args[0], directory.ConfigDir); err != nil {
-			return err
-		}
-
-		return nil
+		return pkg.Install(args[0])
 	},
-}
-
-func compareVersions(a, b string) bool {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
-
-	// Convert version parts to integers
-	for i := range 3 {
-		aNum, _ := strconv.Atoi(aParts[i])
-		bNum, _ := strconv.Atoi(bParts[i])
-
-		if aNum > bNum {
-			return true // it is greater
-		} else if aNum < bNum {
-			return false // a is smaller
-		}
-	}
-	return true // Versions are equal
 }
