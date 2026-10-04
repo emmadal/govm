@@ -142,9 +142,13 @@ func TestInstallUseListRemove(t *testing.T) {
 		t.Errorf("cached archive not removed: %v", cached)
 	}
 
-	rc, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".bashrc"))
+	profile, err := ProfilePath() // .bash_profile on macOS, .bashrc elsewhere
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, _ := os.ReadFile(profile)
 	if strings.Count(string(rc), blockStart) != 1 {
-		t.Errorf("expected exactly one govm block in .bashrc:\n%s", rc)
+		t.Errorf("expected exactly one govm block in %s:\n%s", profile, rc)
 	}
 }
 

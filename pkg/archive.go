@@ -109,9 +109,13 @@ func extractTarGz(archive, dest string) error {
 				return err
 			}
 		case tar.TypeSymlink:
-			// Only allow links that stay inside the extracted tree.
-			resolved := filepath.Join(filepath.Dir(path), hdr.Linkname)
-			if filepath.IsAbs(hdr.Linkname) || !strings.HasPrefix(resolved, dest+string(filepath.Separator)) {
+			// Only allow relative links that stay inside the extracted tree.
+			// On Windows "/x" is rooted but not IsAbs, so check both forms.
+			link := hdr.Linkname
+			rooted := filepath.IsAbs(link) || filepath.VolumeName(link) != "" ||
+				strings.HasPrefix(link, "/") || strings.HasPrefix(link, `\`)
+			resolved := filepath.Join(filepath.Dir(path), link)
+			if rooted || !strings.HasPrefix(resolved, dest+string(filepath.Separator)) {
 				return fmt.Errorf("illegal symlink in archive: %s -> %s", hdr.Name, hdr.Linkname)
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
