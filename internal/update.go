@@ -1,233 +1,151 @@
 package internal
 
 import (
+	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/emmadal/govm/pkg"
-	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
+
+	"github.com/emmadal/govm/pkg"
 )
 
-// getBinaryName returns the appropriate binary name based on platform
-func getBinaryName() string {
+// GitHub endpoints, variables so tests can override them.
+var (
+	latestReleaseURL   = "https://api.github.com/repos/emmadal/govm/releases/latest"
+	releaseDownloadURL = "https://github.com/emmadal/govm/releases/download"
+)
+
+// assetName returns the release asset for the current platform.
+func assetName() string {
+	name := fmt.Sprintf("govm_%s_%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
-		return "govm.exe"
+		name += ".exe"
 	}
-	return "govm"
+	return name
 }
 
-// detectPlatform returns the OS and architecture for download
-func detectPlatform() (string, string, error) {
-	goos := runtime.GOOS
-
-	// Map architecture
-	arch := runtime.GOARCH
-	switch arch {
-	case "amd64", "arm64", "386", "x86_64":
-		// These are already correctly named
-		break
-	default:
-		return "", "", fmt.Errorf("unsupported architecture: %s", arch)
+// latestTag returns the tag of the latest govm release.
+func latestTag(client *http.Client) (string, error) {
+	resp, err := client.Get(latestReleaseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to check for updates: %w", err)
 	}
-
-	return goos, arch, nil
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to check for updates: HTTP %s", resp.Status)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("failed to decode latest release: %w", err)
+	}
+	if release.TagName == "" {
+		return "", errors.New("latest release has no tag")
+	}
+	return release.TagName, nil
 }
 
-// downloadLatestRelease downloads the latest govm binary for the current platform
-func downloadLatestRelease() (string, error) {
-	// Create a temporary directory
-	tmpDir, err := os.MkdirTemp("", "govm-update-*")
+// expectedChecksum reads the SHA-256 of asset from the release's
+// checksums.txt. It returns "" when the release publishes no checksums.
+func expectedChecksum(client *http.Client, tag, asset string) (string, error) {
+	resp, err := client.Get(fmt.Sprintf("%s/%s/checksums.txt", releaseDownloadURL, tag))
 	if err != nil {
-		return "", fmt.Errorf("failed to create temporary directory: %v", err)
+		return "", fmt.Errorf("failed to download checksums: %w", err)
 	}
-
-	// Detect a platform
-	goos, arch, err := detectPlatform()
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download checksums: HTTP %s", resp.Status)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		// sha256sum format: "<hex>  <name>" or "<hex> *<name>"
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 2 && filepath.Base(strings.TrimPrefix(fields[1], "*")) == asset {
+			return fields[0], nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
 		return "", err
 	}
-
-	// Construct download URL and binary name based on a platform
-	var downloadURL string
-	if goos == "windows" {
-		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s.exe", goos, arch)
-	} else {
-		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s", goos, arch)
-	}
-
-	pkg.BluePrintln(fmt.Sprintf("Downloading latest govm binary for %s_%s...\n", goos, arch))
-
-	// Download the binary
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to download govm binary: %v", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			_ = os.RemoveAll(tmpDir)
-			pkg.RedPrintln(fmt.Sprintf("Error closing response body: %v\n", err))
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to download govm binary: HTTP status %d", resp.StatusCode)
-	}
-
-	// Save the binary to a temporary file
-	binaryPath := filepath.Join(tmpDir, getBinaryName())
-	outFile, err := os.OpenFile(binaryPath, os.O_CREATE|os.O_WRONLY, 0755)
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to create output file: %v", err)
-	}
-
-	_, err = io.Copy(outFile, resp.Body)
-	err2 := outFile.Close()
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to write output file: %v", err)
-	}
-	if err2 != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to close output file: %v", err2)
-	}
-
-	return binaryPath, nil
+	return "", fmt.Errorf("checksums.txt for %s has no entry for %s", tag, asset)
 }
 
-// copyFile copies a file from src to dst with appropriate permissions
-func copyFile(src, dst string) error {
-	// Open source file
-	inFile, err := os.Open(src)
+// UpdateGovm replaces the running govm binary with the latest release.
+func UpdateGovm(force bool) error {
+	client := pkg.NewHTTPClient()
+	current := GetVersion()
+
+	pkg.Info("Checking for updates...")
+	tag, err := latestTag(client)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %v", err)
-	}
-	defer func() {
-		_ = inFile.Close()
-	}()
-
-	// Create a destination file
-	outFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %v", err)
-	}
-	defer func() {
-		_ = outFile.Close()
-	}()
-
-	// Copy the content
-	_, err = io.Copy(outFile, inFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy file: %v", err)
-	}
-
-	return nil
-}
-
-// getInstallDir returns the appropriate installation directory based on sudo access
-func getInstallDir() string {
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		pkg.RedPrintln(fmt.Sprintf("Error getting home directory: %v\n", err))
-		os.Exit(1)
-	}
-
-	localBin := filepath.Join(homedir, ".local", "bin")
-	// Ensure a local bin directory exists
-	if err := os.MkdirAll(localBin, 0755); err != nil {
-		pkg.RedPrintln(fmt.Sprintf("Error creating local bin directory: %v\n", err))
-	}
-
-	return localBin
-}
-
-// getBinaryVersion returns the current version of govm
-func getBinaryVersion(latestVersion string) bool {
-	versionFile := filepath.Join(getInstallDir(), "VERSION")
-	data, err := os.ReadFile(versionFile)
-	if err != nil {
-		pkg.RedPrintln(fmt.Sprintf("Error reading version file: %v\n", err))
-		return false
-	}
-	lines := strings.SplitN(string(data), "\n", 2)
-	return strings.TrimSpace(lines[0]) == latestVersion
-}
-
-// UpdateGovm updates govm to the latest version
-func UpdateGovm() error {
-	pkg.BluePrintln("Updating govm - Go Version Manager\n")
-
-	// Get the installation directory and check admin rights
-	govmDir, err := getGovmExecDir()
-	if err != nil {
-		return fmt.Errorf("failed to determine installation directory: %v", err)
-	}
-
-	// Ensure the installation directory exists
-	installDir := filepath.Dir(govmDir)
-	if err := os.MkdirAll(installDir, 0755); err != nil {
-		return fmt.Errorf("failed to create installation directory: %v", err)
-	}
-
-	// Get the latest version tag
-	pkg.BluePrintln("Checking for updates...\n")
-	binary := pkg.Binary{}
-	if err := binary.GetLatestTag(); err != nil {
 		return err
 	}
-
-	// Compare versions
-	if getBinaryVersion(binary.LatestTag) {
-		pkg.GreenPrintln("👍 govm is already up to date\n")
+	if tag == current && !force {
+		pkg.Success("govm %s is already up to date", current)
 		return nil
 	}
 
-	// Download the release
-	binaryPath, err := downloadLatestRelease()
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to locate the govm binary: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+
+	asset := assetName()
+	sum, err := expectedChecksum(client, tag, asset)
 	if err != nil {
 		return err
 	}
-	// Clean up temp directory
-	defer func() {
-		_ = os.RemoveAll(filepath.Dir(binaryPath))
-	}()
-
-	// Install the binary
-	pkg.BluePrintln("Installing govm binary...\n")
-	installPath := filepath.Join(installDir, getBinaryName())
-
-	// Use direct copy for user directories
-	if err := copyFile(binaryPath, installPath); err != nil {
-		return fmt.Errorf("failed to install govm binary: %v", err)
+	if sum == "" {
+		pkg.Warn("Release %s publishes no checksums; skipping verification.", tag)
 	}
 
-	// Create a VERSION file
-	versionFilePath := filepath.Join(installDir, "VERSION")
-	file, err := os.OpenFile(versionFilePath, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create VERSION file: %v", err)
+	// Download next to the binary so the final rename stays on one filesystem.
+	tmp := filepath.Join(filepath.Dir(exe), "."+filepath.Base(exe)+".new")
+	url := fmt.Sprintf("%s/%s/%s", releaseDownloadURL, tag, asset)
+	if err := pkg.Download(client, url, tmp, sum, "govm "+tag); err != nil {
+		return permissionHint(err, exe)
 	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	sb := strings.Builder{}
-	sb.WriteString(binary.LatestTag + "\n")
-	sb.WriteString(strings.TrimSpace("time: " + time.Now().Format(time.RFC3339)))
-	_, err = file.WriteString(sb.String())
-	if err != nil {
-		return fmt.Errorf("failed to write VERSION file: %v", err)
+	defer func() { _ = os.Remove(tmp) }()
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		return err
 	}
 
-	pkg.GreenPrintln("🎉 govm has been successfully updated!\n")
-	pkg.BluePrintln("For more information, visit: https://github.com/emmadal/govm")
+	if runtime.GOOS == "windows" {
+		// A running executable cannot be replaced on Windows, but it can be
+		// renamed out of the way.
+		old := exe + ".old"
+		_ = os.Remove(old)
+		if err := os.Rename(exe, old); err != nil {
+			return permissionHint(err, exe)
+		}
+		if err := os.Rename(tmp, exe); err != nil {
+			_ = os.Rename(old, exe)
+			return permissionHint(err, exe)
+		}
+	} else if err := os.Rename(tmp, exe); err != nil {
+		return permissionHint(err, exe)
+	}
 
+	pkg.Success("govm updated from %s to %s", current, tag)
 	return nil
+}
+
+func permissionHint(err error, exe string) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("%w\ngovm is installed at %s, which you cannot write to. Re-run with elevated privileges (e.g. sudo)", err, exe)
+	}
+	return err
 }

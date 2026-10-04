@@ -1,21 +1,19 @@
 package internal
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-)
+import "runtime/debug"
 
-// GetVersion returns the version of govm
+// Version is set at build time with
+// -ldflags "-X github.com/emmadal/govm/internal.Version=v1.2.3".
+var Version = ""
+
+// GetVersion returns the version of govm: the build-time version when set,
+// the module version for `go install` builds, and "dev" otherwise.
 func GetVersion() string {
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		return "dev" // Fallback if VERSION file is missing
+	if Version != "" {
+		return Version
 	}
-	versionFile := filepath.Join(homedir, ".local", "bin", "VERSION")
-	data, err := os.ReadFile(versionFile)
-	if err != nil {
-		return "dev" // Fallback if a VERSION file is missing
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
 	}
-	return strings.TrimSpace(string(data))
+	return "dev"
 }
