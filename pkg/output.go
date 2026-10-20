@@ -1,54 +1,84 @@
 package pkg
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strings"
+
+	"golang.org/x/term"
 )
 
 const (
-	GreenAnsi = "\033[32m"
-	ResetAnsi = "\033[0m"
-	BlueAnsi  = "\033[34m"
-	RedAnsi   = "\033[31m"
-	BlackAnsi = "\033[30m"
+	greenAnsi  = "\033[32m"
+	yellowAnsi = "\033[33m"
+	blueAnsi   = "\033[34m"
+	redAnsi    = "\033[31m"
+	resetAnsi  = "\033[0m"
 )
 
-// RedPrintln prints text in red to the console
-func RedPrintln(text string) {
-	_, _ = fmt.Fprint(os.Stdout, RedAnsi+text+ResetAnsi)
+// Standard streams, replaceable in tests.
+var (
+	Stdin  io.Reader = os.Stdin
+	Stdout io.Writer = os.Stdout
+	Stderr io.Writer = os.Stderr
+)
+
+// colorEnabled reports whether w is a terminal and NO_COLOR is unset.
+func colorEnabled(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
 }
 
-// GreenPrintln prints text in green to the console
-func GreenPrintln(text string) {
-	_, _ = fmt.Fprint(os.Stdout, GreenAnsi+text+ResetAnsi)
+func paint(w io.Writer, color, text string) string {
+	if !colorEnabled(w) {
+		return text
+	}
+	return color + text + resetAnsi
 }
 
-// BluePrintln prints text in blue to the console
-func BluePrintln(text string) {
-	_, _ = fmt.Fprint(os.Stdout, BlueAnsi+text+ResetAnsi)
+// Println prints an uncolored line to stdout.
+func Println(format string, a ...any) {
+	_, _ = fmt.Fprintln(Stdout, fmt.Sprintf(format, a...))
 }
 
-// BlackPrintln prints text in black to the console
-func BlackPrintln(text string) {
-	_, _ = fmt.Fprint(os.Stdout, BlackAnsi+text+ResetAnsi)
+// Info prints a progress line in blue to stdout.
+func Info(format string, a ...any) {
+	_, _ = fmt.Fprintln(Stdout, paint(Stdout, blueAnsi, fmt.Sprintf(format, a...)))
 }
 
-// TextGreen returns text in green
-func TextGreen(text string) string {
-	return fmt.Sprintf("%s%s%s", GreenAnsi, text, ResetAnsi)
+// Success prints a line in green to stdout.
+func Success(format string, a ...any) {
+	_, _ = fmt.Fprintln(Stdout, paint(Stdout, greenAnsi, fmt.Sprintf(format, a...)))
 }
 
-// TextBlue returns text in blue
-func TextBlue(text string) string {
-	return fmt.Sprintf("%s%s%s", BlueAnsi, text, ResetAnsi)
+// Warn prints a line in yellow to stderr.
+func Warn(format string, a ...any) {
+	_, _ = fmt.Fprintln(Stderr, paint(Stderr, yellowAnsi, fmt.Sprintf(format, a...)))
 }
 
-// TextRed returns text in red
-func TextRed(text string) string {
-	return fmt.Sprintf("%s%s%s", RedAnsi, text, ResetAnsi)
+// PrintError prints an error in red to stderr.
+func PrintError(err error) {
+	_, _ = fmt.Fprintln(Stderr, paint(Stderr, redAnsi, "Error: "+err.Error()))
 }
 
-// TextBlack returns text in black
-func TextBlack(text string) string {
-	return fmt.Sprintf("%s%s%s", BlackAnsi, text, ResetAnsi)
+// Green returns text colored green when stdout is a terminal.
+func Green(text string) string {
+	return paint(Stdout, greenAnsi, text)
+}
+
+// Confirm asks a yes/no question on stdout and reads the answer from stdin.
+// Anything other than "y" or "yes" counts as no.
+func Confirm(question string) (bool, error) {
+	_, _ = fmt.Fprintf(Stdout, "%s [y/N]: ", question)
+	reply, err := bufio.NewReader(Stdin).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, fmt.Errorf("failed to read input: %w", err)
+	}
+	reply = strings.ToLower(strings.TrimSpace(reply))
+	return reply == "y" || reply == "yes", nil
 }

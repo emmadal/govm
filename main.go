@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"github.com/emmadal/govm/cmd"
 	"os"
+
+	"github.com/emmadal/govm/cmd"
+	"github.com/emmadal/govm/pkg"
 )
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
+		pkg.PrintError(err)
 		os.Exit(1)
 	}
 }

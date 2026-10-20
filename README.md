@@ -16,25 +16,17 @@ With **govm**, you can quickly install any Go version, switch between them effor
 
 ## 🚀 Why Use govm?
 
-- **Effortless Installation** – Install any Go version with a single command.
+- **Effortless Installation** – Install any Go version, a whole minor line (`1.22`) or `latest` with a single command.
 
-- **Seamless Switching** – Easily switch between different Go versions for different projects.
+- **Instant Switching** – `govm use` repoints a single link, so the switch applies right away with no shell reload.
 
-- **Environment Isolation** – Avoid conflicts between Go versions across projects.
+- **Verified Downloads** – Every Go archive is checked against the SHA-256 checksum published on go.dev.
 
-- **Lightweight & Fast** – Optimized for performance with minimal overhead.
+- **Cross-Platform Support** – Works on Linux, macOS, and Windows, with no dependency on `tar`, `sed` or 7-Zip.
 
-- **Persistent Versioning** – Set and persist default Go versions globally or per project.
-
-- **Automatic Updates** – Keep your Go environment up to date with the latest releases.
-
-- **Cross-Platform Support** – Works on Linux, macOS, and Windows.
-
-- **Minimal and Fast** – Lightweight with optimized performance.
+- **Custom Location** – Set `GOVM_DIR` to keep Go versions somewhere other than `~/.govm`.
 
 - **Uninstall and Update** – Easily update or remove govm when needed.
-
-- **Custom Go Cache Paths** – Define custom directories for Go versions.
 
 ---
 
@@ -45,7 +37,7 @@ With **govm**, you can quickly install any Go version, switch between them effor
 To install `govm` on Linux or macOS, run the following command:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
 ```
 
 or
@@ -54,9 +46,11 @@ or
 wget -qO- https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.sh | bash
 ```
 
+The binary goes to `~/.local/bin` (override with `GOVM_BIN_DIR`), and a small block marked `# >>> govm >>>` is added to your shell profile to put govm and the active Go version on your `PATH`.
+
 ### Windows
 
-To install `govm` on Windows, open PowerShell as Administrator and run:
+To install `govm` on Windows, open PowerShell and run:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.ps1 | iex
@@ -66,63 +60,92 @@ iwr -useb https://raw.githubusercontent.com/emmadal/govm/main/scripts/install.ps
 
 ## 🔧 Usage
 
+Versions can be written with or without the `go` prefix (`1.22.3` or `go1.22.3`).
+
 ### Installing a Go version
 
-```bash
-govm install <version>
-```
-
-### Using a specific Go version
+Installing a version also switches to it.
 
 ```bash
-govm use go<version>
+govm install latest     # newest stable release
+govm install 1.22       # newest 1.22.x patch release
+govm install 1.21.5     # exact version
+govm install 1.23rc1    # pre-release
 ```
 
-### Listing installed Go versions
+### Listing available versions
+
+```bash
+govm ls-remote          # newest patch of each minor release
+govm ls-remote --all    # every release, including pre-releases
+```
+
+### Switching versions
+
+```bash
+govm use 1.22.3
+govm use 1.22           # newest installed 1.22.x
+```
+
+### Showing installed and active versions
 
 ```bash
 govm list
+govm current
 ```
 
 ### Removing a Go version
 
 ```bash
-govm rm go<version>
+govm rm 1.21.5          # add --yes to skip the confirmation
 ```
 
 ### Updating govm
-
-You can update `govm` to the latest version using the following command:
 
 ```bash
 govm update
 ```
 
----
-
 ### Uninstalling govm
 
-We provide a command to uninstall `govm` from your system. This will remove the govm binary and all installed Go versions managed by govm. Please note that this will not remove any Go versions installed manually.
-
-You can uninstall `govm` using the following command:
+This removes the govm binary, every Go version it installed, and the lines it added to your shell profile. Go installations made outside govm are left untouched.
 
 ```bash
-govm uninstall
+govm uninstall          # add --yes to skip the confirmation
 ```
+
+---
+
+## ⚙️ How it works
+
+```
+~/.govm/
+├── versions/go/go1.22.3/   # one directory per installed version
+├── .cache/                 # downloaded archives
+└── current -> versions/go/go1.22.3
+```
+
+Only `~/.govm/current/bin` is on your `PATH`. `govm use` atomically repoints `current` (a directory junction on Windows), so every open shell sees the new version immediately.
+
+If you installed govm before this layout existed, the first `govm use` removes the old per-version `PATH` lines from your shell profile.
 
 ---
 
 ## 🛠️ Requirements
 
-- Bash 3.2 or later (for Linux/macOS)
-- PowerShell 5.1 or later (for Windows)
-- A POSIX-compliant system (Linux, macOS) or Windows 7/10/11
+- Linux or macOS with bash, zsh, fish or another POSIX shell
+- Windows 10/11 with PowerShell 5.1 or later
 
 ---
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+```bash
+go test ./...
+golangci-lint run
+```
 
 ---
 

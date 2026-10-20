@@ -50,24 +50,13 @@ $tempDir = Join-Path $env:TEMP "govm_install"
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 Set-Location $tempDir
 
-# Get the latest version tag
-Write-Host "Retrieving latest version information..." -ForegroundColor Blue
-try {
-    $latestVersion = (Invoke-RestMethod -Uri "https://api.github.com/repos/emmadal/govm/releases/latest").tag_name
-}
-catch {
-    Write-Host "Could not retrieve latest version information: $_" -ForegroundColor Yellow
-    Write-Host "Using latest available release." -ForegroundColor Yellow
-    $latestVersion = "unknown"
-}
-
 # Download the pre-compiled binary for the detected platform
-$downloadUrl = "https://github.com/emmadal/govm/releases/latest/download/govm_windows_$goArch.exe"
+$asset = "govm_windows_$goArch.exe"
+$baseUrl = "https://github.com/emmadal/govm/releases/latest/download"
 
-Write-Host "Downloading govm binary for windows_$goArch..." -ForegroundColor Blue
+Write-Host "Downloading $asset..." -ForegroundColor Blue
 try {
-    Write-Host "Downloading from $downloadUrl..." -ForegroundColor Blue
-    Invoke-WebRequest -Uri $downloadUrl -OutFile "govm.exe" -UseBasicParsing
+    Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile "govm.exe" -UseBasicParsing
 }
 catch {
     Write-Host "Failed to download govm binary: $_" -ForegroundColor Red
@@ -76,15 +65,36 @@ catch {
     exit 1
 }
 
-# Check if download was successful
 if (-not (Test-Path "govm.exe") -or (Get-Item "govm.exe").Length -eq 0) {
     Write-Host "Failed to download govm binary." -ForegroundColor Red
-    Write-Host "To build govm from source, you need Go installed on your machine." -ForegroundColor Red
-    Write-Host "Please install Go and then run:" -ForegroundColor Blue
-    Write-Host "git clone https://github.com/emmadal/govm.git"
-    Write-Host "cd govm"
-    Write-Host "go build --ldflags '-s -w' -o govm.exe"
     exit 1
+}
+
+# Verify the checksum when the release publishes one
+$checksums = $null
+try {
+    $checksums = (Invoke-WebRequest -Uri "$baseUrl/checksums.txt" -UseBasicParsing).Content
+    if ($checksums -is [byte[]]) { $checksums = [Text.Encoding]::UTF8.GetString($checksums) }
+}
+catch {
+    Write-Host "Warning: this release publishes no checksums; skipping verification." -ForegroundColor Yellow
+}
+if ($checksums) {
+    $expected = $null
+    foreach ($line in ($checksums -split "`n")) {
+        $fields = $line.Trim() -split '\s+'
+        if ($fields.Count -eq 2 -and $fields[1].TrimStart('*') -eq $asset) { $expected = $fields[0] }
+    }
+    if (-not $expected) {
+        Write-Host "checksums.txt has no entry for $asset." -ForegroundColor Red
+        exit 1
+    }
+    $actual = (Get-FileHash -Algorithm SHA256 "govm.exe").Hash
+    if ($actual -ne $expected) {
+        Write-Host "Checksum verification failed for $asset." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Checksum verified." -ForegroundColor Blue
 }
 
 # Install govm binary
@@ -92,40 +102,31 @@ Write-Host "Installing govm binary..." -ForegroundColor Blue
 try {
     Copy-Item "govm.exe" -Destination $govmBinDir -Force
 } catch {
-    Write-Host "Failed to copy govm.exe to $govmBinDir: $_" -ForegroundColor Red
-    Write-Host "You may need administrator privileges to write to this location." -ForegroundColor Yellow
+    Write-Host "Failed to copy govm.exe to ${govmBinDir}: $_" -ForegroundColor Red
     exit 1
 }
 
-# Create VERSION file with the latest version tag and installation timestamp
-try {
-    "Version: $latestVersion" | Out-File -FilePath (Join-Path $govmBinDir "VERSION") -Encoding utf8
-    "Installed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Add-Content -Path (Join-Path $govmBinDir "VERSION") -Encoding utf8
-} catch {
-    Write-Host "Warning: Could not write version information: $_" -ForegroundColor Yellow
-}
-
-# Check if we need to add govm to PATH
+# Put govm and the active Go version (managed by `govm use`) on the user PATH
+$currentGoBin = Join-Path $govmDir "current\bin"
 $currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
 if ($null -eq $currentPath) {
     $currentPath = ""
 }
-
-# More precise PATH checking by splitting and comparing
-$pathEntries = $currentPath -split ';' | Where-Object { $_ -ne "" }
-if ($pathEntries -notcontains $govmBinDir) {
+$pathEntries = @($currentPath -split ';' | Where-Object { $_ -ne "" })
+$missing = @($govmBinDir, $currentGoBin | Where-Object { $pathEntries -notcontains $_ })
+if ($missing.Count -gt 0) {
     Write-Host "Adding govm to your PATH..." -ForegroundColor Blue
     try {
-        $newPath = "$govmBinDir;$currentPath".TrimEnd(';')
+        $newPath = (@($missing) + $pathEntries) -join ';'
         [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-        $env:Path = "$govmBinDir;$env:Path"
+        $env:Path = ($missing -join ';') + ";$env:Path"
         Write-Host "Successfully updated PATH environment variable." -ForegroundColor Green
     } catch {
         Write-Host "Warning: Failed to update PATH: $_" -ForegroundColor Yellow
-        Write-Host "You may need to manually add $govmBinDir to your PATH." -ForegroundColor Yellow
+        Write-Host "You may need to manually add $govmBinDir and $currentGoBin to your PATH." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "govm bin directory is already in your PATH." -ForegroundColor Green
+    Write-Host "govm is already in your PATH." -ForegroundColor Green
 }
 
 # Clean up temporary directory
@@ -134,5 +135,5 @@ Remove-Item -Recurse -Force $tempDir
 
 Write-Host "🎉 govm has been successfully installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "To start using govm, you need to close and reopen your PowerShell/Command Prompt, or run:"
-Write-Host "    refreshenv" -ForegroundColor Blue
+Write-Host "Open a new terminal, then install Go with:"
+Write-Host "    govm install latest" -ForegroundColor Blue
