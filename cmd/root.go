@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/emmadal/govm/internal"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 // initCmd represents the base command when called without any subcommands
