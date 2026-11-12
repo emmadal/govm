@@ -1,101 +1,85 @@
 package pkg
 
 import (
+	"cmp"
+	"context"
+	"errors"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"time"
+
+	"github.com/schollz/progressbar/v3"
 )
+
+// DefaultGoBaseURL is where Go archives are downloaded from.
+const DefaultGoBaseURL = "https://golang.org/dl"
 
 type Tarball struct {
 	Url  string
-	File *os.File
 	Arch string
+	// BaseURL overrides DefaultGoBaseURL.
+	BaseURL string
+	// Downloader overrides the default download settings.
+	Downloader *Downloader
 }
 
 // GetArchWithExt returns the architecture and extension for the current OS.
 func (t *Tarball) GetArchWithExt() string {
-	var ext string
-	os := runtime.GOOS
-	if os == "windows" {
+	ext := "tar.gz"
+	if runtime.GOOS == "windows" {
 		ext = "zip"
-	} else {
-		ext = "tar.gz"
 	}
 	return fmt.Sprintf("%s-%s.%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// GetURL returns the download URL for the current OS.
+// GetURL sets the download URL for the current OS.
 func (t *Tarball) GetURL(version string) {
-	var ext string
-	if runtime.GOOS == "windows" {
-		ext = "zip"
-	} else {
-		ext = "tar.gz"
-	}
-	arch := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-	t.Url = fmt.Sprintf("https://golang.org/dl/go%s.%s.%s", version, arch, ext)
+	t.Url = fmt.Sprintf("%s/go%s.%s", cmp.Or(t.BaseURL, DefaultGoBaseURL), version, t.GetArchWithExt())
 }
 
-// DownloadGoVersion downloads a specific Go version.
-func (t *Tarball) DownloadGoVersion(version, cachePath string) error {
-	// Get download URL
+// DownloadGoVersion downloads a specific Go version into cachePath and returns
+// the path of the archive. A stalled or interrupted download is retried; if it
+// still fails, no partial archive is left in the cache.
+func (t *Tarball) DownloadGoVersion(ctx context.Context, version, cachePath string) (string, error) {
 	t.GetURL(version)
+	file := filepath.Join(cachePath, fmt.Sprintf("go%s.%s", version, t.GetArchWithExt()))
 
-	// Create HTTP request
-	req, err := http.NewRequest(http.MethodGet, t.Url, nil)
-	if err != nil {
-		return err
+	var d Downloader
+	if t.Downloader != nil {
+		d = *t.Downloader
 	}
-
-	// Send HTTP request
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("no version go%s found. Please use a valid version number", version)
-	}
-
-	// Create a file
-	fileName := fmt.Sprintf("go%s.%s", version, t.GetArchWithExt())
-	file := filepath.Join(cachePath, fileName)
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s", f)
-	}
-	defer func() {
-		// If there was no previous error, capture any error from closing the file
-		if closeErr := f.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("failed to close file %s: %w", file, closeErr)
+	if d.Progress == nil {
+		d.Progress = func(_ int, total int64) io.Writer {
+			// A total of -1 renders a spinner instead of a percentage.
+			return progressbar.DefaultBytes(total)
 		}
-	}()
-
-	// Copy the file to the cache directory
-	if resp.ContentLength > 0 {
-		// Create a progress bar
-		BlackPrintln(fmt.Sprintf("⚡️Downloading go%s", version) + "\n")
-		bar := progressbar.DefaultBytes(resp.ContentLength)
-		if _, err := io.Copy(io.MultiWriter(bar, f), resp.Body); err != nil {
-			return fmt.Errorf("failed to copy %s", file)
-		}
-		t.File = f
 	}
-	return nil
+	if d.OnRetry == nil {
+		d.OnRetry = func(attempt, maxAttempts int, err error) {
+			RedPrintln(fmt.Sprintf("\n⚠️  Download interrupted: %v\n", err))
+			BlackPrintln(fmt.Sprintf("🔁 Retrying (%d/%d)...\n\n", attempt, maxAttempts))
+		}
+	}
+
+	BlackPrintln(fmt.Sprintf("⚡️Downloading go%s", version) + "\n")
+	if err := d.Download(ctx, t.Url, file); err != nil {
+		fmt.Println() // end the progress bar line before the error is printed
+		if statusErr, ok := errors.AsType[*HTTPStatusError](err); ok && statusErr.StatusCode == http.StatusNotFound {
+			return "", fmt.Errorf("no version go%s found. Please use a valid version number", version)
+		}
+		return "", fmt.Errorf("failed to download go%s: %w", version, err)
+	}
+	return file, nil
 }
 
-// InstallVersion installs a specific Go version.
-func (t *Tarball) InstallVersion(file, version, versionDir string) error {
-
+// InstallVersion installs a specific Go version from the archive at file. If
+// the extraction fails, both the half-extracted version folder and the archive
+// are removed so that neither is mistaken for a valid install.
+func (t *Tarball) InstallVersion(ctx context.Context, file, version, versionDir string) error {
 	BlackPrintln(fmt.Sprintf("⏳ Installing go%s", version) + "\n")
 
 	versionFolder := filepath.Join(versionDir, fmt.Sprintf("go%s", version))
@@ -103,33 +87,41 @@ func (t *Tarball) InstallVersion(file, version, versionDir string) error {
 		return fmt.Errorf("unable to create version folder %s", versionFolder)
 	}
 
-	switch runtime.GOOS {
-	case "linux", "darwin":
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("tar -xzf %s --strip-components=1 -C %s", file, versionFolder))
+	if err := extract(ctx, file, versionFolder); err != nil {
+		_ = os.RemoveAll(versionFolder)
+		_ = os.Remove(file)
+		return err
+	}
+	return nil
+}
+
+// extract unpacks the archive at file into versionFolder.
+func extract(ctx context.Context, file, versionFolder string) error {
+	if runtime.GOOS != "windows" {
+		cmd := exec.CommandContext(ctx, "tar", "-xzf", file, "--strip-components=1", "-C", versionFolder)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to unzip %s", file)
 		}
 		return nil
-	case "windows":
-		// For Windows 10 build 17,063 or later which has built-in tar
-		cmd := exec.Command(
-			"powershell", "-Command",
-			fmt.Sprintf("tar -xzf '%s' --strip-components=1 -C '%s'", file, versionFolder),
+	}
+
+	// For Windows 10 build 17,063 or later which has built-in tar
+	cmd := exec.CommandContext(
+		ctx, "powershell", "-Command",
+		fmt.Sprintf("tar -xzf '%s' --strip-components=1 -C '%s'", file, versionFolder),
+	)
+	if err := cmd.Run(); err != nil {
+		// Try to fall back to 7-Zip if available (common on Windows)
+		sevenZipCmd := exec.CommandContext(
+			ctx, "powershell", "-Command",
+			fmt.Sprintf(
+				"& { $env:tmp='%s'; 7z x '%s' -o\"$env:tmp\" -y; Get-ChildItem \"$env:tmp\" | Select-Object -First 1 | Get-ChildItem | Move-Item -Destination '%s'; }",
+				os.TempDir(), file, versionFolder,
+			),
 		)
-		if err := cmd.Run(); err != nil {
-			// Try to fall back to 7-Zip if available (common on Windows)
-			sevenZipCmd := exec.Command(
-				"powershell", "-Command",
-				fmt.Sprintf(
-					"& { $env:tmp='%s'; 7z x '%s' -o\"$env:tmp\" -y; Get-ChildItem \"$env:tmp\" | Select-Object -First 1 | Get-ChildItem | Move-Item -Destination '%s'; }",
-					os.TempDir(), file, versionFolder,
-				),
-			)
-			if err := sevenZipCmd.Run(); err != nil {
-				return fmt.Errorf("failed to unzip %s (tried both tar and 7z)", file)
-			}
+		if err := sevenZipCmd.Run(); err != nil {
+			return fmt.Errorf("failed to unzip %s (tried both tar and 7z)", file)
 		}
-		return nil
 	}
 	return nil
 }

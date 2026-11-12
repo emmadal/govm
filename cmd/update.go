@@ -3,7 +3,10 @@ package cmd
 import (
 	"fmt"
 	"github.com/emmadal/govm/internal"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -20,6 +23,9 @@ var updateCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return internal.UpdateGovm()
+		// Stop cleanly on Ctrl-C: the download is aborted and cleaned up.
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return internal.UpdateGovm(ctx)
 	},
 }

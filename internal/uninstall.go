@@ -205,7 +205,7 @@ func UninstallConfirm() (bool, error) {
 	var sb strings.Builder
 
 	// Build the confirmation message in memory using strings.Builder
-	fmt.Fprintf(&sb, pkg.TextRed("This will completely remove govm from your system, including:"))
+	fmt.Fprintln(&sb, pkg.TextRed("This will completely remove govm from your system, including:"))
 	fmt.Fprintln(&sb, "  - The govm binary")
 	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
 	fmt.Fprintln(&sb, "  - All govm configuration files")
