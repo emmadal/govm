@@ -1,89 +1,99 @@
 name: Build and Release
+
 on:
   push:
+    branches:
+      - main
     tags:
-      - 'v*' # Trigger only on tags that start with "v" (e.g., v1.0.0)
+      - 'v*' # e.g. v1.0.2, either pushed directly or created by the release step below
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-and-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     name: Build and Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
     steps:
-      # Using GitHub's REST API with the RELEASE_TOKEN to check if the user is a repository admin
+      # Only the repository owner (or an admin) may publish a release.
       - name: Verify Owner/Admin Access
         run: |
-          if [[ "${{ github.event.repository.owner.name }}" != "${{ github.actor }}" ]]; then
-            # Check if user is an admin via the API
-            REPO="${{ github.repository }}"
+          if [[ "${{ github.event.repository.owner.login }}" != "${{ github.actor }}" ]]; then
             RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-              "https://api.github.com/repos/$REPO/collaborators/${{ github.actor }}/permission")
-            PERMISSION=$(echo $RESPONSE | jq -r '.permission')
+              "https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission")
+            PERMISSION=$(echo "$RESPONSE" | jq -r '.permission')
             echo "User ${{ github.actor }} has $PERMISSION permissions."
             if [[ "$PERMISSION" != "admin" ]]; then
               echo "Error: Only repository owners or admins can trigger releases!"
               exit 1
             fi
-          else
-            echo "User ${{ github.actor }} is the repository owner. Proceeding with build."
           fi
 
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # On main: release only when the VERSION file points to a version that
+      # has no release yet, so merging without a version bump is a no-op.
+      # On a tag push: always release that tag.
+      - name: Check whether a release is needed
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$(tr -d '[:space:]' < VERSION)"
+            EXISTS=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
+              --jq "[.[] | select(.tag_name == \"${TAG}\")] | length")
+            echo "VERSION tag: ${TAG}, existing releases with that tag: ${EXISTS}"
+            if [[ "${EXISTS}" != "0" ]]; then
+              echo "Release ${TAG} already exists, nothing to do."
+              echo "needed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "Release ${TAG} will be built."
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
+        if: steps.check.outputs.needed == 'true'
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24' # You can adjust this to your preferred Go version
+          go-version-file: go.mod
 
       - name: Build binaries
+        if: steps.check.outputs.needed == 'true'
         run: |
-          # Create a directory for the binaries
           mkdir -p build
 
-          # List of OS and architectures to build for
-          PLATFORMS=("linux/amd64" "linux/arm64" "linux/386" "darwin/amd64" "darwin/arm64" "windows/amd64" 
-          "windows/arm64" "windows/386" )
-          
-          # Build for each platform
+          PLATFORMS=("linux/amd64" "linux/arm64" "linux/386" "darwin/amd64" "darwin/arm64" "windows/amd64" "windows/arm64" "windows/386")
+
           for PLATFORM in "${PLATFORMS[@]}"; do
             OS="${PLATFORM%/*}"
             ARCH="${PLATFORM#*/}"
-            
-            echo "Building for $OS/$ARCH..."
-            
-            # Set output name with .exe for Windows
+            echo "Building for ${OS}/${ARCH}..."
+
             if [ "$OS" = "windows" ]; then
               OUTPUT="build/govm_${OS}_${ARCH}.exe"
             else
               OUTPUT="build/govm_${OS}_${ARCH}"
             fi
-            
-            # Set environment variables for cross-compilation
-            GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "$OUTPUT" .
-            
-            if [ $? -ne 0 ]; then
-              echo "Failed to build for $OS/$ARCH"
-              exit 1
-            fi
+
+            GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "$OUTPUT" . || exit 1
           done
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      - name: Create release and upload binaries
+        if: steps.check.outputs.needed == 'true'
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
-        with:
+          tag_name: ${{ steps.check.outputs.tag }}
+          name: Release ${{ steps.check.outputs.tag }}
           files: |
             build/govm_linux_amd64
             build/govm_linux_arm64
@@ -93,5 +103,3 @@ jobs:
             build/govm_windows_amd64.exe
             build/govm_windows_arm64.exe
             build/govm_windows_386.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
