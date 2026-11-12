@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -90,38 +89,7 @@ func (t *Tarball) InstallVersion(ctx context.Context, file, version, versionDir 
 	if err := extract(ctx, file, versionFolder); err != nil {
 		_ = os.RemoveAll(versionFolder)
 		_ = os.Remove(file)
-		return err
-	}
-	return nil
-}
-
-// extract unpacks the archive at file into versionFolder.
-func extract(ctx context.Context, file, versionFolder string) error {
-	if runtime.GOOS != "windows" {
-		cmd := exec.CommandContext(ctx, "tar", "-xzf", file, "--strip-components=1", "-C", versionFolder)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to unzip %s", file)
-		}
-		return nil
-	}
-
-	// For Windows 10 build 17,063 or later which has built-in tar
-	cmd := exec.CommandContext(
-		ctx, "powershell", "-Command",
-		fmt.Sprintf("tar -xzf '%s' --strip-components=1 -C '%s'", file, versionFolder),
-	)
-	if err := cmd.Run(); err != nil {
-		// Try to fall back to 7-Zip if available (common on Windows)
-		sevenZipCmd := exec.CommandContext(
-			ctx, "powershell", "-Command",
-			fmt.Sprintf(
-				"& { $env:tmp='%s'; 7z x '%s' -o\"$env:tmp\" -y; Get-ChildItem \"$env:tmp\" | Select-Object -First 1 | Get-ChildItem | Move-Item -Destination '%s'; }",
-				os.TempDir(), file, versionFolder,
-			),
-		)
-		if err := sevenZipCmd.Run(); err != nil {
-			return fmt.Errorf("failed to unzip %s (tried both tar and 7z)", file)
-		}
+		return fmt.Errorf("failed to unzip %s: %w", file, err)
 	}
 	return nil
 }

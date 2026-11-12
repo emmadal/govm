@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"fmt"
@@ -133,40 +134,19 @@ func TestDownloadGoVersion_TimeoutLeavesCacheEmpty(t *testing.T) {
 	assertEmptyDir(t, cache)
 }
 
-func TestInstallVersion_CorruptArchiveIsCleanedUp(t *testing.T) {
-	cache, versions := t.TempDir(), t.TempDir()
-	archive := filepath.Join(cache, "go1.25.0."+(&Tarball{}).GetArchWithExt())
-	if err := os.WriteFile(archive, []byte("this is not an archive"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err == nil {
-		t.Fatal("expected an extraction error")
-	}
-	assertEmptyDir(t, versions)
-	assertEmptyDir(t, cache)
-}
-
-func TestInstallVersion_ExtractsArchive(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("builds a tar.gz; Windows installs from zip")
-	}
-	// A path with a space guards against shell word-splitting.
-	cache := filepath.Join(t.TempDir(), "my cache")
-	versions := filepath.Join(t.TempDir(), "my versions")
-	if err := os.MkdirAll(cache, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
+// goTarGz builds a .tar.gz archive laid out like a Go release.
+func goTarGz(t *testing.T, files map[string]string) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	content := []byte("#!/bin/sh\n")
-	if err := tw.WriteHeader(&tar.Header{Name: "go/bin/go", Mode: 0o755, Size: int64(len(content))}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(content); err != nil {
-		t.Fatal(err)
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(content))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
@@ -174,16 +154,150 @@ func TestInstallVersion_ExtractsArchive(t *testing.T) {
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-	archive := filepath.Join(cache, "go1.25.0.tar.gz")
-	if err := os.WriteFile(archive, buf.Bytes(), 0o644); err != nil {
+	return buf.Bytes()
+}
+
+// goZip builds a .zip archive laid out like a Go release.
+func goZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
+	return buf.Bytes()
+}
 
-	if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err != nil {
-		t.Fatalf("InstallVersion: %v", err)
+var archiveFormats = []struct {
+	ext   string
+	build func(*testing.T, map[string]string) []byte
+}{
+	{"tar.gz", goTarGz},
+	{"zip", goZip},
+}
+
+// Both formats are extracted on every platform: the code is the same
+// everywhere, only the format a platform downloads differs.
+func TestInstallVersion_CorruptArchiveIsCleanedUp(t *testing.T) {
+	for _, format := range archiveFormats {
+		t.Run(format.ext, func(t *testing.T) {
+			cache, versions := t.TempDir(), t.TempDir()
+			archive := filepath.Join(cache, "go1.25.0."+format.ext)
+			if err := os.WriteFile(archive, []byte("this is not an archive"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err == nil {
+				t.Fatal("expected an extraction error")
+			}
+			assertEmptyDir(t, versions)
+			assertEmptyDir(t, cache)
+		})
 	}
-	assertFile(t, filepath.Join(versions, "go1.25.0", "bin", "go"), content)
-	if _, err := os.Stat(archive); err != nil {
-		t.Errorf("archive must be kept after a successful install: %v", err)
+}
+
+// A truncated archive starts like a valid one and must still be rejected.
+func TestInstallVersion_TruncatedArchiveIsCleanedUp(t *testing.T) {
+	for _, format := range archiveFormats {
+		t.Run(format.ext, func(t *testing.T) {
+			cache, versions := t.TempDir(), t.TempDir()
+			data := format.build(t, map[string]string{"go/bin/go": strings.Repeat("binary", 4096)})
+			archive := filepath.Join(cache, "go1.25.0."+format.ext)
+			if err := os.WriteFile(archive, data[:len(data)/2], 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err == nil {
+				t.Fatal("expected an extraction error")
+			}
+			assertEmptyDir(t, versions)
+			assertEmptyDir(t, cache)
+		})
+	}
+}
+
+func TestInstallVersion_ExtractsArchive(t *testing.T) {
+	for _, format := range archiveFormats {
+		t.Run(format.ext, func(t *testing.T) {
+			// Paths with a space guard against any word-splitting.
+			cache := filepath.Join(t.TempDir(), "my cache")
+			versions := filepath.Join(t.TempDir(), "my versions")
+			if err := os.MkdirAll(cache, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			archive := filepath.Join(cache, "go1.25.0."+format.ext)
+			data := format.build(t, map[string]string{
+				"go/VERSION":            "go1.25.0\n",
+				"go/bin/go":             "#!/bin/sh\n",
+				"go/src/fmt/doc.go":     "package fmt\n",
+				"go/pkg/tool/x/compile": "tool",
+			})
+			if err := os.WriteFile(archive, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err != nil {
+				t.Fatalf("InstallVersion: %v", err)
+			}
+			// The top-level "go" directory of the archive is dropped.
+			install := filepath.Join(versions, "go1.25.0")
+			assertFile(t, filepath.Join(install, "VERSION"), []byte("go1.25.0\n"))
+			assertFile(t, filepath.Join(install, "bin", "go"), []byte("#!/bin/sh\n"))
+			assertFile(t, filepath.Join(install, "src", "fmt", "doc.go"), []byte("package fmt\n"))
+			assertFile(t, filepath.Join(install, "pkg", "tool", "x", "compile"), []byte("tool"))
+			if _, err := os.Stat(archive); err != nil {
+				t.Errorf("archive must be kept after a successful install: %v", err)
+			}
+			if format.ext == "tar.gz" && runtime.GOOS != "windows" {
+				info, err := os.Stat(filepath.Join(install, "bin", "go"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if info.Mode().Perm()&0o100 == 0 {
+					t.Errorf("bin/go mode = %v, want executable", info.Mode())
+				}
+			}
+		})
+	}
+}
+
+// An archive must never write outside of the version folder.
+func TestInstallVersion_EntriesCannotEscape(t *testing.T) {
+	for _, format := range archiveFormats {
+		t.Run(format.ext, func(t *testing.T) {
+			base := t.TempDir()
+			cache, versions := filepath.Join(base, "cache"), filepath.Join(base, "versions")
+			if err := os.MkdirAll(cache, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			archive := filepath.Join(cache, "go1.25.0."+format.ext)
+			data := format.build(t, map[string]string{"go/a/../../../../escaped": "evil"})
+			if err := os.WriteFile(archive, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := (&Tarball{}).InstallVersion(t.Context(), archive, "1.25.0", versions); err == nil {
+				t.Error("expected the escaping entry to be rejected")
+			}
+			found := false
+			_ = filepath.WalkDir(filepath.Dir(base), func(path string, _ os.DirEntry, _ error) error {
+				if filepath.Base(path) == "escaped" {
+					found = true
+				}
+				return nil
+			})
+			if found {
+				t.Error("entry was written outside of the version folder")
+			}
+		})
 	}
 }
