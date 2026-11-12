@@ -91,7 +91,7 @@ func (b *Binary) RemoveGoVersion(version string) error {
 	}
 	// Ask for confirmation
 	response := ""
-	fmt.Fprintf(os.Stdout, "Do you want to remove go%s? (y/n): ", version)
+	_, _ = fmt.Fprintf(os.Stdout, "Do you want to remove go%s? (y/n): ", version)
 	if _, err := fmt.Scanln(&response); err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (b *Binary) RemoveGoVersion(version string) error {
 	// Remove the Go version
 	g := errgroup.Group{}
 	g.SetLimit(2)
-	fmt.Fprintf(os.Stdout, "Removing go%s...\n", version)
+	_, _ = fmt.Fprintf(os.Stdout, "Removing go%s...\n", version)
 
 	g.Go(
 		func() error {
