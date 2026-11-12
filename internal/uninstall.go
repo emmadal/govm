@@ -79,7 +79,7 @@ func cleanShellProfile(profilePath string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create a temporary file
 	tempFile, err := os.CreateTemp(filepath.Dir(profilePath), "tempprofile")
@@ -87,7 +87,7 @@ func cleanShellProfile(profilePath string) error {
 		return err
 	}
 	tempFilePath := tempFile.Name()
-	defer os.Remove(tempFilePath) // Clean up in case of failure
+	defer func() { _ = os.Remove(tempFilePath) }() // Clean up in case of failure
 
 	// Filter out govm-related lines
 	scanner := bufio.NewScanner(file)
@@ -209,13 +209,13 @@ func UninstallConfirm() (bool, error) {
 	fmt.Fprintln(&sb, "  - The govm binary")
 	fmt.Fprintln(&sb, "  - All installed Go versions managed by govm")
 	fmt.Fprintln(&sb, "  - All govm configuration files")
-	fmt.Fprintln(os.Stdout, sb.String())
+	_, _ = fmt.Fprintln(os.Stdout, sb.String())
 
 	// Ask for user confirmation
 	var reply string
 
 	// Add the prompt to the builder
-	fmt.Fprint(os.Stdout, "Are you sure you want to proceed? (y/n): ")
+	_, _ = fmt.Fprint(os.Stdout, "Are you sure you want to proceed? (y/n): ")
 	_, err := fmt.Scanln(&reply)
 	if err != nil {
 		return false, fmt.Errorf("failed to read input: %v", err)
@@ -224,14 +224,15 @@ func UninstallConfirm() (bool, error) {
 	reply = strings.ToLower(strings.TrimSpace(reply))
 
 	// Handle valid responses
-	if reply == "y" {
+	switch reply {
+	case "y":
 		return true, nil
-	} else if reply == "n" {
-		fmt.Fprintln(os.Stdout, "Removal cancelled.")
+	case "n":
+		_, _ = fmt.Fprintln(os.Stdout, "Removal cancelled.")
 		return false, nil
-	} else {
+	default:
 		// Invalid input, re-prompt
-		fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
+		_, _ = fmt.Fprintln(os.Stdout, "Invalid input. Please enter 'y' to confirm or 'n' to cancel.")
 		return false, nil
 	}
 }
