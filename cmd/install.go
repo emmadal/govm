@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/emmadal/govm/pkg"
 	"github.com/spf13/cobra"
@@ -16,19 +19,13 @@ var installCmd = &cobra.Command{
 	Short:   "Install a specific go version",
 	Example: strings.Join([]string{"$ govm install 1.21.0"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
-		if strings.Contains(args[0], "go") {
-			return fmt.Errorf("invalid version format. Please enter a valid version")
-		}
-		if len(args) > 1 || len(args) == 0 {
-
-			return fmt.Errorf("expect one argument")
-		}
-		return nil
+		return validateVersionArg(args)
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args[0]) < 6 {
-			return fmt.Errorf("invalid version format. Please enter a valid version")
-		}
+		// Stop cleanly on Ctrl-C: the download is aborted, not retried, and
+		// its partial file is removed.
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
 
 		// Check if a version is >= MinVersion
 		if !compareVersions(args[0], MinVersion) {
@@ -49,12 +46,13 @@ var installCmd = &cobra.Command{
 		}
 
 		// Download the Go version
-		if err := tarball.DownloadGoVersion(args[0], directory.CacheDir); err != nil {
+		archive, err := tarball.DownloadGoVersion(ctx, args[0], directory.CacheDir)
+		if err != nil {
 			return err
 		}
 
 		// Install the Go version
-		if err := tarball.InstallVersion(tarball.File.Name(), args[0], directory.ConfigDir); err != nil {
+		if err := tarball.InstallVersion(ctx, archive, args[0], directory.ConfigDir); err != nil {
 			return err
 		}
 

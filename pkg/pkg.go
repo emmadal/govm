@@ -143,8 +143,14 @@ func (b *Binary) GetLatestTag() error {
 		_ = resp.Body.Close()
 	}()
 
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to get latest tag: HTTP status %d", resp.StatusCode)
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&tag); err != nil {
 		return fmt.Errorf("failed to decode latest tag")
+	}
+	if tag.TagName == "" {
+		return fmt.Errorf("failed to get latest tag: empty tag name")
 	}
 	b.LatestTag = tag.TagName
 	return nil

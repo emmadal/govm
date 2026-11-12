@@ -16,13 +16,7 @@ var useCmd = &cobra.Command{
 	Short:   "Use a specific Go version",
 	Example: strings.Join([]string{"$ govm use 1.21.0"}, "\n"),
 	Args: func(cmd *cobra.Command, args []string) error {
-		if strings.Contains(args[0], "go") {
-			return fmt.Errorf("invalid version format. Please enter a valid version")
-		}
-		if len(args) > 1 || len(args) == 0 {
-			return fmt.Errorf("expect one argument")
-		}
-		return nil
+		return validateVersionArg(args)
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Use the Go version
@@ -33,7 +27,7 @@ var useCmd = &cobra.Command{
 		if err := binary.CachedGoVersion(args[0]); err != nil {
 			return err
 		}
-		
+
 		// Check if the version exists before proceeding
 		folder := filepath.Join(binary.InstallDir, fmt.Sprintf("go%s", args[0]))
 		fileInfo, err := os.Stat(folder)

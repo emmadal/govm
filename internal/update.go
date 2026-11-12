@@ -1,10 +1,10 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"github.com/emmadal/govm/pkg"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,74 +37,58 @@ func detectPlatform() (string, string, error) {
 	return goos, arch, nil
 }
 
-// downloadLatestRelease downloads the latest govm binary for the current platform
-func downloadLatestRelease() (string, error) {
+// releaseBaseURL is where the latest govm binaries are published.
+var releaseBaseURL = "https://github.com/emmadal/govm/releases/latest/download"
+
+// newDownloader builds the downloader used for the govm binary.
+var newDownloader = func() *pkg.Downloader {
+	return &pkg.Downloader{
+		Mode: 0755,
+		OnRetry: func(attempt, maxAttempts int, err error) {
+			pkg.RedPrintln(fmt.Sprintf("Download interrupted: %v\n", err))
+			pkg.BluePrintln(fmt.Sprintf("Retrying (%d/%d)...\n", attempt, maxAttempts))
+		},
+	}
+}
+
+// downloadLatestRelease downloads the latest govm binary for the current
+// platform into a new temporary directory and returns the binary path. The
+// directory is removed if the download fails.
+func downloadLatestRelease(ctx context.Context) (string, error) {
+	// Detect a platform
+	goos, arch, err := detectPlatform()
+	if err != nil {
+		return "", err
+	}
+
+	// Construct download URL based on a platform
+	downloadURL := fmt.Sprintf("%s/govm_%s_%s", releaseBaseURL, goos, arch)
+	if goos == "windows" {
+		downloadURL += ".exe"
+	}
+
 	// Create a temporary directory
 	tmpDir, err := os.MkdirTemp("", "govm-update-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %v", err)
 	}
 
-	// Detect a platform
-	goos, arch, err := detectPlatform()
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", err
-	}
-
-	// Construct download URL and binary name based on a platform
-	var downloadURL string
-	if goos == "windows" {
-		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s.exe", goos, arch)
-	} else {
-		downloadURL = fmt.Sprintf("https://github.com/emmadal/govm/releases/latest/download/govm_%s_%s", goos, arch)
-	}
-
 	pkg.BluePrintln(fmt.Sprintf("Downloading latest govm binary for %s_%s...\n", goos, arch))
 
 	// Download the binary
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to download govm binary: %v", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			_ = os.RemoveAll(tmpDir)
-			pkg.RedPrintln(fmt.Sprintf("Error closing response body: %v\n", err))
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to download govm binary: HTTP status %d", resp.StatusCode)
-	}
-
-	// Save the binary to a temporary file
 	binaryPath := filepath.Join(tmpDir, getBinaryName())
-	outFile, err := os.OpenFile(binaryPath, os.O_CREATE|os.O_WRONLY, 0755)
-	if err != nil {
+	if err := newDownloader().Download(ctx, downloadURL, binaryPath); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to create output file: %v", err)
-	}
-
-	_, err = io.Copy(outFile, resp.Body)
-	err2 := outFile.Close()
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to write output file: %v", err)
-	}
-	if err2 != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("failed to close output file: %v", err2)
+		return "", fmt.Errorf("failed to download govm binary: %w", err)
 	}
 
 	return binaryPath, nil
 }
 
-// copyFile copies a file from src to dst with appropriate permissions
-func copyFile(src, dst string) error {
-	// Open source file
+// copyFile copies src to dst. The content is written to a temporary file next
+// to dst and renamed into place, so dst is never left half-written and a
+// running binary is replaced rather than overwritten.
+func copyFile(src, dst string) (err error) {
 	inFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %v", err)
@@ -113,21 +97,29 @@ func copyFile(src, dst string) error {
 		_ = inFile.Close()
 	}()
 
-	// Create a destination file
-	outFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
+	outFile, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %v", err)
 	}
 	defer func() {
-		_ = outFile.Close()
+		if err != nil {
+			_ = outFile.Close()
+			_ = os.Remove(outFile.Name())
+		}
 	}()
 
-	// Copy the content
-	_, err = io.Copy(outFile, inFile)
-	if err != nil {
+	if _, err = io.Copy(outFile, inFile); err != nil {
 		return fmt.Errorf("failed to copy file: %v", err)
 	}
-
+	if err = outFile.Chmod(0755); err != nil {
+		return fmt.Errorf("failed to set permissions: %v", err)
+	}
+	if err = outFile.Close(); err != nil {
+		return fmt.Errorf("failed to close destination file: %v", err)
+	}
+	if err = os.Rename(outFile.Name(), dst); err != nil {
+		return fmt.Errorf("failed to replace %s: %v", dst, err)
+	}
 	return nil
 }
 
@@ -161,7 +153,7 @@ func getBinaryVersion(latestVersion string) bool {
 }
 
 // UpdateGovm updates govm to the latest version
-func UpdateGovm() error {
+func UpdateGovm(ctx context.Context) error {
 	pkg.BluePrintln("Updating govm - Go Version Manager\n")
 
 	// Get the installation directory and check admin rights
@@ -190,7 +182,7 @@ func UpdateGovm() error {
 	}
 
 	// Download the release
-	binaryPath, err := downloadLatestRelease()
+	binaryPath, err := downloadLatestRelease(ctx)
 	if err != nil {
 		return err
 	}
@@ -210,19 +202,10 @@ func UpdateGovm() error {
 
 	// Create a VERSION file
 	versionFilePath := filepath.Join(installDir, "VERSION")
-	file, err := os.OpenFile(versionFilePath, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create VERSION file: %v", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
 	sb := strings.Builder{}
 	sb.WriteString(binary.LatestTag + "\n")
 	sb.WriteString(strings.TrimSpace("time: " + time.Now().Format(time.RFC3339)))
-	_, err = file.WriteString(sb.String())
-	if err != nil {
+	if err := os.WriteFile(versionFilePath, []byte(sb.String()), 0644); err != nil {
 		return fmt.Errorf("failed to write VERSION file: %v", err)
 	}
 
